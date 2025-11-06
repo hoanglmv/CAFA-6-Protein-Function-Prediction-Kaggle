@@ -1,0 +1,114 @@
+1. Mục tiêu cuộc thi
+
+Cuộc thi CAFA-6 hướng tới nhiệm vụ dự đoán chức năng của protein (protein function prediction). Cụ thể hơn:
+
+Bạn được cung cấp thông tin về chuỗi amino acid của một protein (sequence) và mục tiêu là dự đoán các thuật ngữ thuộc Gene Ontology (GO terms) gắn với protein đó — tức là những chức năng phân tử, quá trình sinh học, hoặc vị trí tế bào mà protein tham gia. 
+Kaggle
++2
+Medium
++2
+
+Những thuật ngữ GO nằm trong ba “khía” (aspect) chính:
+
+Molecular Function (MF) – chức năng phân tử
+
+Biological Process (BP) – quá trình sinh học
+
+Cellular Component (CC) – vị trí/tổ chức tế bào 
+Kaggle
++1
+
+Về bối cảnh: Critical Assessment of Function Annotation (CAFA) là một thử thách cộng đồng lớn trong sinh học tính toán để đánh giá các phương pháp dự đoán chức năng protein. 
+biofunctionprediction.org
++1
+
+Vì vậy, cuộc thi này là một dạng multi-label classification (nhiều nhãn GO cho mỗi protein) và thường rất không cân bằng (có nhiều nhãn xuất hiện rất ít) – do đó thách thức lớn là làm sao dự đoán được tốt các nhãn ít xuất hiện, và xử lý được dữ liệu lớn. Từ một bài viết: “…one protein could belong to more than one GO and it could fall under different aspect. This highly skewed data set would give problem in classification.” 
+Medium
+
+Tóm lại: bạn sẽ dùng chuỗi amino acid (và/hoặc các đặc trưng khác nếu bạn muốn khai thác) để học một mô hình có khả năng gán các GO-thuật ngữ cho protein mới chưa biết hoặc chưa được chú thích đầy đủ.
+
+2. Dataset của cuộc thi
+
+Dưới đây là các thông tin về dataset mà Kaggle cung cấp cho CAFA-6, cùng với một số lưu ý quan trọng.
+
+2.1 Nội dung cơ bản
+
+Theo thông tin từ trang “Data” của cuộc thi:
+
+Dataset bao gồm một tập “train” (dữ liệu huấn luyện) với chuỗi amino acid và nhãn GO tương ứng. 
+Kaggle
++1
+
+Có thông tin về ba “subontologies” (các khía GO) như đã nói: MF, BP, CC. 
+Kaggle
++1
+
+Ví dụ từ bài viết blog: “The train file contains 3,754,570 entries … and these 3,754,570 entries contains 29,706 unique GO terms … Among these … the shortest sequence has only 3 amino acids while the longest has over 35 thousands.” 
+Medium
+
+Lưu ý: con số 3,754,570 và 29,706 GO terms là từ một phân tích ngoài (blog) — người dùng cần kiểm tra chính xác trên Kaggle dataset để xác nhận.
+
+Một file “test” hoặc “unlabeled” được đưa ra để các đội dự đoán — khi kết quả được đánh giá so với nhãn thực (chưa công bố tại thời điểm submit). (Điều này là kiểu “blind test” thường thấy trong thử thách CAFA).
+
+2.2 Cấu trúc và các trường dữ liệu
+
+Một số trường thông tin có thể gồm:
+
+ID của protein (ví dụ accession, hoặc một identifier nội bộ)
+
+Chuỗi amino acid (sequence) của protein
+
+Nhãn GO (có thể nhiều nhãn cho mỗi protein)
+
+Aspect (khía GO: MF / BP / CC) — theo blog trên Medium. 
+Medium
+
+Có thể thêm thông tin khác như chiều dài chuỗi, loài nguồn gốc protein, … tùy dataset cụ thể.
+
+Do đặc thù bài toán: mỗi protein có thể có nhiều nhãn GO → nên dạng dữ liệu là multi-label.
+
+2.3 Những điểm lưu ý quan trọng
+
+Không cân bằng nhãn: Có rất nhiều GO terms rất ít xuất hiện, trong khi một số xuất hiện nhiều lần. Điều này tạo thách thức lớn cho mô hình. (như blog đã nêu) 
+Medium
+
+Chiều dài chuỗi amino acid rất đa dạng: Có protein rất ngắn (3 amino acid) và rất dài (>35 000) theo phân tích blog. 
+Medium
+ Điều này có nghĩa là khi xây dựng mô hình, cần xử lý tốt chuỗi dài/khối lượng lớn.
+
+Aspects nhiều chiều: Bạn có thể xây dựng mô hình riêng hoặc dùng chung cho MF/BP/CC; mỗi khía có đặc điểm riêng.
+
+Chuyển nhãn GO là dạng ontology: GO terms không phải là nhãn độc lập hoàn toàn — chúng có cấu trúc phân cấp (ontology) và có mối quan hệ cha-con. Điều này có thể tận dụng trong mô hình (ví dụ loss function, regularization) để dự đoán tốt hơn. (Xem bài về CAFA) 
+ResearchGate
+
+Thiếu hoàn chỉnh annotation (“open world”): Có khả năng nhiều protein chưa được chú thích đầy đủ chức năng — nên nếu mô hình dự đoán một nhãn mà hiện chưa có annotation, chưa chắc là sai. Đây là một thách thức đánh giá trong CAFA. 
+ResearchGate
+
+2.4 Ví dụ nhanh về số liệu
+
+Từ bài viết tham khảo:
+
+3.7 triệu bản ghi huấn luyện (train)
+
+~29.706 GO terms khác nhau
+
+Chuỗi amino acid: từ 3 đến hơn 35.000 chiều dài.
+
+Có “aspect” trường dữ liệu để phân biệt MF/BP/CC. 
+Medium
+
+2.5 Gợi ý về cách sử dụng dataset
+
+Bạn cần làm bộ tiền xử lý chuỗi amino acid: ví dụ mã hóa (one-hot, embedding, pretrained protein language model, …)
+
+Do chiều dài rất khác nhau → có thể cắt, pad, hoặc sử dụng model kiểu transformer/attention có thể xử lý chuỗi dài hoặc dùng pooling.
+
+Multi-label: nhãn là bộ GO terms, thường nhiều nhãn mỗi protein → nên chọn loss function phù hợp như Binary Cross Entropy, ranking loss, hoặc các loss đặc thù multi-label.
+
+Có thể phân biệt riêng theo aspect: cho mỗi protein, bạn có 3 bộ nhãn MF/BP/CC hoặc bạn có thể ghép chung.
+
+Do imbalance: cần cân nhắc oversampling nhãn nhỏ, hoặc các kỹ thuật loss weighting, hoặc threshold tuning khi dự đoán.
+
+Vì nhãn có cấu trúc ontology: bạn có thể khai thác mối quan hệ giữa các GO terms để cải thiện — ví dụ, nếu mô hình dự đoán một GO có cha là X thì có thể tự động gán cha X; hoặc dùng hierarchical loss.
+
+Khi submit: cần dự đoán chính xác cho test set (không có nhãn công bố) rồi chấm điểm (thường dựa trên F-max, auPRC, …).
