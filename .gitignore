@@ -1,3 +1,5 @@
 data/
 *.tsv
 .env
+src/temp_process_data_fixed.py
+src/viewer_plot.png
