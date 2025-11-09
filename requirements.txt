@@ -1,5 +1,9 @@
-jupyter
 pandas
 numpy
 scikit-learn
+tqdm
+ipython
+biopython
+lightgbm
+tensorflow
 matplotlib
