@@ -4,8 +4,10 @@ from Bio import SeqIO
 from IPython.display import display # Để hiển thị đẹp trong Notebook
 
 # --- CẤU HÌNH ĐƯỜNG DẪN ---
-# Lưu ý: Nên dùng dấu gạch chéo '/' hoặc r"..." để tránh lỗi đường dẫn trên Windows
-BASE_DIR = r'/home/myvh/hoang/CAFA-6-Protein-Function-Prediction-Kaggle/data/Train'
+import os
+# Lấy đường dẫn thư mục gốc của dự án (đi ngược lên 1 cấp từ 'src')
+PROJ_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+BASE_DIR = os.path.join(PROJ_DIR, 'data', 'Train')
 TRAIN_FASTA_PATH = f'{BASE_DIR}/train_sequences.fasta'
 TRAIN_TERMS_PATH = f'{BASE_DIR}/train_terms.tsv'
 
@@ -93,7 +95,7 @@ else:
 import os
 
 # Đường dẫn lưu file (Cùng thư mục data)
-SAVE_PATH = r'/home/myvh/hoang/CAFA-6-Protein-Function-Prediction-Kaggle/data/processed_data.pkl'
+SAVE_PATH = os.path.join(PROJ_DIR, 'data', 'processed_data.pkl')
 
 print(f"Đang lưu dữ liệu vào: {SAVE_PATH} ...")
 # Dùng pickle để lưu giữ nguyên định dạng List và các cột

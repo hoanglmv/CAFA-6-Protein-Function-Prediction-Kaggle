@@ -15,7 +15,7 @@ from IPython.display import display
 # ==========================================
 class Config:
     # Đường dẫn
-    BASE_DIR = r'/home/myvh/hoang/CAFA-6-Protein-Function-Prediction-Kaggle'
+    BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
     DATA_PATH = os.path.join(BASE_DIR, 'data', 'processed_data.pkl')
     MODEL_DIR = os.path.join(BASE_DIR, 'models')
     
