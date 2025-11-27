@@ -95,7 +95,7 @@ else:
 import os
 
 # Đường dẫn lưu file (Cùng thư mục data)
-SAVE_PATH = os.path.join(PROJ_DIR, 'data', 'processed_data.pkl')
+SAVE_PATH = os.path.join(PROJ_DIR, 'data', 'ver1.pkl')
 
 print(f"Đang lưu dữ liệu vào: {SAVE_PATH} ...")
 # Dùng pickle để lưu giữ nguyên định dạng List và các cột
