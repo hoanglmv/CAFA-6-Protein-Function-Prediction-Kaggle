@@ -10,22 +10,24 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 # 1. CONFIGURATION
 # ==========================================
 class TestConfig:
-    # Đường dẫn (Tự động lấy theo thư mục dự án)
+    # Nếu file này nằm ở src/ver1, lùi lên 2 cấp để tới project root
     BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-    
-    # Input
+    # Input test FASTA
     TEST_FASTA_PATH = os.path.join(BASE_DIR, 'data', 'Test', 'testsuperset.fasta')
-    MODEL_PATH = os.path.join(BASE_DIR, 'models', 'transformer_model.keras')
-    LABELS_MAP_PATH = os.path.join(BASE_DIR, 'models', 'labels_map.pkl')
-    
-    # Output
-    SUBMISSION_PATH = os.path.join(BASE_DIR, 'submission.tsv')
-    
-    # Tham số (Phải khớp với lúc Train)
+
+    # Model & labels trong thư mục models/ver1 (theo yêu cầu)
+    MODEL_DIR = os.path.join(BASE_DIR, 'models', 'ver1')
+    MODEL_PATH = None  # sẽ được xác định động phía dưới
+    LABELS_MAP_PATH = os.path.join(MODEL_DIR, 'labels_map.pkl')
+
+    # Output submission (lưu vào models/ver1)
+    SUBMISSION_PATH = os.path.join(MODEL_DIR, 'submission.tsv')
+
+    # Tham số (phải khớp khi train)
     MAX_SEQ_LEN = 512
-    BATCH_SIZE = 64  # Batch size cho dự đoán
-    
+    BATCH_SIZE = 64
+
     # Setup GPU
     @staticmethod
     def setup_gpu():
@@ -36,16 +38,32 @@ class TestConfig:
                     tf.config.experimental.set_memory_growth(gpu, True)
                 print(f"✅ GPU Activated for Inference: {gpus[0].name}")
             except RuntimeError as e:
-                print(e)
+                print("GPU setup error:", e)
         else:
             print("⚠️ Running Inference on CPU")
 
+# Prepare GPU and ensure MODEL_DIR exists
 TestConfig.setup_gpu()
+os.makedirs(TestConfig.MODEL_DIR, exist_ok=True)
+
+# Prefer best_model.keras then transformer_model.keras (legacy)
+candidate_best = os.path.join(TestConfig.MODEL_DIR, 'best_model.keras')
+candidate_final = os.path.join(TestConfig.MODEL_DIR, 'transformer_model.keras')
+if os.path.exists(candidate_best):
+    TestConfig.MODEL_PATH = candidate_best
+elif os.path.exists(candidate_final):
+    TestConfig.MODEL_PATH = candidate_final
+else:
+    # allow also 'transformer_model.h5' or top-level fallback for convenience
+    alt_h5 = os.path.join(TestConfig.MODEL_DIR, 'transformer_model.h5')
+    if os.path.exists(alt_h5):
+        TestConfig.MODEL_PATH = alt_h5
+    else:
+        TestConfig.MODEL_PATH = None
 
 # ==========================================
-# 2. REDEFINE CUSTOM LAYERS (BẮT BUỘC)
+# 2. CUSTOM LAYERS (phải định nghĩa giống lúc train)
 # ==========================================
-# Cần định nghĩa lại chính xác để Keras load được model
 class TransformerBlock(layers.Layer):
     def __init__(self, embed_dim, num_heads, ff_dim, rate=0.1, **kwargs):
         super().__init__(**kwargs)
@@ -69,7 +87,7 @@ class TransformerBlock(layers.Layer):
         ffn_output = self.ffn(out1)
         ffn_output = self.dropout2(ffn_output, training=training)
         return self.layernorm2(out1 + ffn_output)
-    
+
     def get_config(self):
         config = super().get_config()
         config.update({"embed_dim": self.embed_dim, "num_heads": self.num_heads, "ff_dim": self.ff_dim, "rate": self.rate})
@@ -90,7 +108,7 @@ class TokenAndPositionEmbedding(layers.Layer):
         positions = self.pos_emb(positions)
         x = self.token_emb(x)
         return x + positions
-    
+
     def get_config(self):
         config = super().get_config()
         config.update({"maxlen": self.maxlen, "vocab_size": self.vocab_size, "embed_dim": self.embed_dim})
@@ -100,7 +118,7 @@ class TokenAndPositionEmbedding(layers.Layer):
 # 3. INFERENCE ENGINE
 # ==========================================
 class CAFA6Inference:
-    def __init__(self, config):
+    def __init__(self, config: TestConfig):
         self.config = config
         self.model = None
         self.top_terms = []
@@ -110,17 +128,19 @@ class CAFA6Inference:
         }
 
     def load_resources(self):
+        # Load labels map
         print(f"[Inference] Loading Labels Map from {self.config.LABELS_MAP_PATH}...")
-        try:
-            with open(self.config.LABELS_MAP_PATH, 'rb') as f:
-                self.top_terms = pickle.load(f)
-            print(f"   -> Loaded {len(self.top_terms)} GO terms.")
-        except FileNotFoundError:
-            raise FileNotFoundError("❌ Không tìm thấy file labels_map.pkl! Bạn đã chạy train.py chưa?")
+        if not os.path.exists(self.config.LABELS_MAP_PATH):
+            raise FileNotFoundError(f"Labels map not found: {self.config.LABELS_MAP_PATH}")
+        with open(self.config.LABELS_MAP_PATH, 'rb') as f:
+            self.top_terms = pickle.load(f)
+        print(f"   -> Loaded {len(self.top_terms)} GO terms.")
 
+        # Load model
+        if not self.config.MODEL_PATH:
+            raise FileNotFoundError(f"No model found in {self.config.MODEL_DIR}. Put 'best_model.keras' or 'transformer_model.keras' there.")
         print(f"[Inference] Loading Model from {self.config.MODEL_PATH}...")
         try:
-            # Load model với Custom Objects
             self.model = tf.keras.models.load_model(
                 self.config.MODEL_PATH,
                 custom_objects={
@@ -130,82 +150,90 @@ class CAFA6Inference:
             )
             print("   -> Model loaded successfully.")
         except Exception as e:
-            raise RuntimeError(f"❌ Lỗi load model: {e}")
+            raise RuntimeError(f"Error loading model: {e}")
 
     def run_prediction(self):
         print(f"[Inference] Reading Test FASTA from {self.config.TEST_FASTA_PATH}...")
-        
-        # 1. Đọc dữ liệu
+        if not os.path.exists(self.config.TEST_FASTA_PATH):
+            raise FileNotFoundError(f"Test FASTA not found: {self.config.TEST_FASTA_PATH}")
+
         test_ids = []
         test_seqs = []
-        # Lưu ý: CAFA test fasta thường có header đơn giản, lấy record.id là đủ
         for record in SeqIO.parse(self.config.TEST_FASTA_PATH, "fasta"):
             test_ids.append(record.id)
             test_seqs.append(str(record.seq))
-            
         total_samples = len(test_ids)
         print(f"   -> Found {total_samples} test sequences.")
-        
-        # 2. Mở file để ghi (Stream writing)
+
+        # Ensure output dir exists
+        out_dir = os.path.dirname(self.config.SUBMISSION_PATH)
+        os.makedirs(out_dir, exist_ok=True)
+
         print(f"[Inference] Generating submission to {self.config.SUBMISSION_PATH}...")
-        
+        CHUNK_SIZE = 5000
+
+        # Write results
         with open(self.config.SUBMISSION_PATH, 'w') as f:
-            # Ghi Header (Kaggle CAFA thường không cần header hoặc header cụ thể, ở đây để mặc định)
-            # Nếu Kaggle báo lỗi header, hãy comment dòng dưới lại.
+            # Header (adjust if challenge requires different format)
             f.write("ObjectId\tGO-Term\tPrediction\n")
-            
-            # 3. Xử lý theo Batch (Chunk) để tránh tràn RAM
-            CHUNK_SIZE = 5000
-            
+
             for i in range(0, total_samples, CHUNK_SIZE):
                 end_idx = min(i + CHUNK_SIZE, total_samples)
-                print(f"   Processing chunk {i}/{total_samples}...", end='\r')
-                
-                # A. Lấy chunk hiện tại
+                print(f"   Processing chunk {i}..{end_idx-1} / {total_samples}", end='\r', flush=True)
+
                 chunk_ids = test_ids[i:end_idx]
                 chunk_seqs = test_seqs[i:end_idx]
-                
-                # B. Preprocess (Giống hệt lúc train)
-                X_chunk_list = [[self.AA_MAP.get(aa, 0) for aa in seq] for seq in chunk_seqs]
-                X_chunk = pad_sequences(X_chunk_list, maxlen=self.config.MAX_SEQ_LEN, padding='post', truncating='post')
-                
-                # C. Predict
-                # verbose=0 để không in progress bar của Keras làm rối terminal
+
+                # Preprocess
+                X_list = [[self.AA_MAP.get(aa, 0) for aa in seq] for seq in chunk_seqs]
+                X_chunk = pad_sequences(X_list, maxlen=self.config.MAX_SEQ_LEN, padding='post', truncating='post')
+
+                # Predict
                 preds = self.model.predict(X_chunk, batch_size=self.config.BATCH_SIZE, verbose=0)
-                
-                # D. Ghi kết quả
+
+                # Write per sequence: only top-K (to keep file small)
+                TOP_K = 60
+                MIN_SCORE = 0.001
+
                 for j, pid in enumerate(chunk_ids):
                     probs = preds[j]
-                    
-                    # --- CHIẾN THUẬT GHI FILE ---
-                    # Không ghi tất cả 1500 term (file sẽ nặng vài GB).
-                    # Chỉ ghi Top 50-100 term có điểm cao nhất.
-                    
-                    # Lấy index của 60 phần tử có xác suất cao nhất
-                    top_indices = np.argsort(probs)[-60:] 
-                    
+                    top_indices = np.argsort(probs)[-TOP_K:]
+                    # Sort descending for nicer output
+                    top_indices = top_indices[np.argsort(probs[top_indices])[::-1]]
+
                     for idx in top_indices:
-                        score = probs[idx]
-                        
-                        # Chỉ ghi nếu score > 0.001 (0.1%) để loại bỏ nhiễu
-                        if score > 0.001:
-                            term = self.top_terms[idx]
-                            # Định dạng TSV: ID <tab> Term <tab> Score
+                        score = float(probs[idx])
+                        if score > MIN_SCORE:
+                            term = self.top_terms[idx] if idx < len(self.top_terms) else f"TERM_{idx}"
                             f.write(f"{pid}\t{term}\t{score:.3f}\n")
-                            
-        print(f"\n✅ DONE! File submission đã lưu tại:\n   {self.config.SUBMISSION_PATH}")
+
+        print(f"\n✅ DONE! Submission saved at:\n   {self.config.SUBMISSION_PATH}")
 
 # ==========================================
-# 4. MAIN ENTRY POINT
+# 4. MAIN
 # ==========================================
 if __name__ == "__main__":
     cfg = TestConfig()
-    
-    # Kiểm tra file input tồn tại không
+
+    # Quick sanity checks and info
+    print("Configuration:")
+    print(f" - BASE_DIR: {cfg.BASE_DIR}")
+    print(f" - TEST FASTA: {cfg.TEST_FASTA_PATH}")
+    print(f" - MODEL DIR: {cfg.MODEL_DIR}")
+    print(f" - MODEL PATH (chosen): {cfg.MODEL_PATH}")
+    print(f" - LABELS MAP: {cfg.LABELS_MAP_PATH}")
+    print(f" - SUBMISSION PATH: {cfg.SUBMISSION_PATH}")
+
+    # Make sure required files exist
+    if not os.path.exists(cfg.LABELS_MAP_PATH):
+        print(f"❌ labels_map.pkl not found at {cfg.LABELS_MAP_PATH}. Run training first and copy labels_map.pkl into models/ver1.")
+        exit(1)
+    if not cfg.MODEL_PATH or not os.path.exists(cfg.MODEL_PATH):
+        print(f"❌ Model not found in {cfg.MODEL_DIR}. Place 'best_model.keras' or 'transformer_model.keras' in models/ver1.")
+        exit(1)
     if not os.path.exists(cfg.TEST_FASTA_PATH):
-        print(f"❌ Error: Không tìm thấy file test tại {cfg.TEST_FASTA_PATH}")
-        print("   Hãy đảm bảo bạn đã tải file 'testsuperset.fasta' vào thư mục data/Test")
-        exit()
+        print(f"❌ Test FASTA not found at {cfg.TEST_FASTA_PATH}. Place testsuperset.fasta into data/Test.")
+        exit(1)
 
     engine = CAFA6Inference(cfg)
     engine.load_resources()
