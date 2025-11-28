@@ -17,7 +17,7 @@ class Config:
     # Nếu file này nằm ở: src/ver1, lùi lên 2 cấp để tới project root
     BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-    # Input data: file processed_data.pkl (tôi đặt ở models/ver1 như bạn muốn)
+    # Input data: processed_data.pkl (mình để ở models/ver1 như bạn yêu cầu)
     DATA_PATH = os.path.join(BASE_DIR, 'models', 'ver1', 'processed_data.pkl')
 
     # Output folder (nơi lưu model, history, labels_map, ảnh)
@@ -30,11 +30,19 @@ class Config:
 
     # Training params
     BATCH_SIZE = 64
-    EPOCHS = 15
+    EPOCHS = 30
     LEARNING_RATE = 1e-3
     EMBED_DIM = 64
     NUM_HEADS = 4
     FF_DIM = 128
+
+    # Early stopping config
+    EARLY_STOP_MONITOR = 'val_loss'
+    EARLY_STOP_PATIENCE = 5
+    REDUCE_LR_MONITOR = 'val_loss'
+    REDUCE_LR_PATIENCE = 3
+    REDUCE_LR_FACTOR = 0.5
+    MIN_LR = 1e-6
 
     @staticmethod
     def setup_gpu():
@@ -215,7 +223,7 @@ def plot_history(history, save_dir):
     df = pd.DataFrame(history.history)
     df.to_csv(os.path.join(save_dir, "history.csv"), index=False)
 
-    plt.figure(figsize=(14, 5))
+    plt.figure(figsize=(25, 5))
 
     plt.subplot(1, 2, 1)
     plt.plot(history.history['loss'], label='train_loss')
@@ -272,19 +280,31 @@ if __name__ == "__main__":
     dm = CAFA6DataModule(dataset, cfg.BATCH_SIZE)
     dm.setup()
 
-    # 4) Callbacks: checkpoint best model + early stopping + csv logger
+    # 4) Callbacks: checkpoint best model + early stopping + reduce LR + csv logger
     checkpoint_path = os.path.join(cfg.MODEL_DIR, "best_model.keras")
     final_model_path = os.path.join(cfg.MODEL_DIR, "transformer_model.keras")
     csv_log_path = os.path.join(cfg.MODEL_DIR, "training_log.csv")
 
     cb_checkpoint = callbacks.ModelCheckpoint(
         filepath=checkpoint_path,
-        monitor='val_loss',
+        monitor=cfg.EARLY_STOP_MONITOR,
         save_best_only=True,
         save_weights_only=False,
         verbose=1
     )
-    cb_early = callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True, verbose=1)
+    cb_early = callbacks.EarlyStopping(
+        monitor=cfg.EARLY_STOP_MONITOR,
+        patience=cfg.EARLY_STOP_PATIENCE,
+        restore_best_weights=True,
+        verbose=1
+    )
+    cb_reduce = callbacks.ReduceLROnPlateau(
+        monitor=cfg.REDUCE_LR_MONITOR,
+        factor=cfg.REDUCE_LR_FACTOR,
+        patience=cfg.REDUCE_LR_PATIENCE,
+        min_lr=cfg.MIN_LR,
+        verbose=1
+    )
     cb_csv = callbacks.CSVLogger(csv_log_path)
 
     # 5) Build & Train
@@ -293,7 +313,7 @@ if __name__ == "__main__":
         with tf.device(device):
             model_wrapper = ProteinTransformerModel(cfg)
             model_wrapper.model.summary()
-            history = model_wrapper.train(dm, callbacks_list=[cb_checkpoint, cb_early, cb_csv])
+            history = model_wrapper.train(dm, callbacks_list=[cb_checkpoint, cb_early, cb_reduce, cb_csv])
 
             # Save final model (also keep checkpoint)
             model_wrapper.save(final_model_path)
@@ -302,7 +322,7 @@ if __name__ == "__main__":
         # fallback train on default device if with tf.device fails
         print("Warning: training in device context failed:", e)
         model_wrapper = ProteinTransformerModel(cfg)
-        history = model_wrapper.train(dm, callbacks_list=[cb_checkpoint, cb_early, cb_csv])
+        history = model_wrapper.train(dm, callbacks_list=[cb_checkpoint, cb_early, cb_reduce, cb_csv])
         model_wrapper.save(final_model_path)
 
     # 6) Visualize & evaluate
