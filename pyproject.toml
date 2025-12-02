@@ -14,7 +14,9 @@ dependencies = [
     "regex>=2025.11.3",
     "scikit-learn>=1.7.2",
     "seaborn>=0.13.2",
+    "sentence-transformers>=5.1.2",
     "tensorflow>=2.20.0",
     "torch>=2.9.1",
     "tqdm>=4.67.1",
+    "transformers>=4.57.3",
 ]
