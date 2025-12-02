@@ -1,0 +1,73 @@
+================================================================================
+GO TERM STATISTICS
+================================================================================
+
+Total unique terms in dataset: 26125
+Selected terms for vocabulary: 20000
+Top N configuration: 20000
+Min frequency configuration: 1
+
+================================================================================
+TOP 50 MOST FREQUENT TERMS
+================================================================================
+  1. GO:0005515      -  33713 occurrences
+  2. GO:0005634      -  13283 occurrences
+  3. GO:0005829      -  13040 occurrences
+  4. GO:0005886      -  10150 occurrences
+  5. GO:0005737      -   9442 occurrences
+  6. GO:0005739      -   5807 occurrences
+  7. GO:0005654      -   5065 occurrences
+  8. GO:0016020      -   3563 occurrences
+  9. GO:0042802      -   3547 occurrences
+ 10. GO:0005576      -   3241 occurrences
+ 11. GO:0005783      -   2837 occurrences
+ 12. GO:0005615      -   2391 occurrences
+ 13. GO:0045944      -   2319 occurrences
+ 14. GO:0070062      -   2130 occurrences
+ 15. GO:0005794      -   2045 occurrences
+ 16. GO:0005730      -   1789 occurrences
+ 17. GO:0042803      -   1627 occurrences
+ 18. GO:0003723      -   1613 occurrences
+ 19. GO:0000122      -   1551 occurrences
+ 20. GO:0009507      -   1512 occurrences
+ 21. GO:0003677      -   1468 occurrences
+ 22. GO:0006355      -   1382 occurrences
+ 23. GO:0005789      -   1351 occurrences
+ 24. GO:0045893      -   1348 occurrences
+ 25. GO:0032991      -   1222 occurrences
+ 26. GO:0003700      -   1198 occurrences
+ 27. GO:0043565      -   1139 occurrences
+ 28. GO:0003729      -   1138 occurrences
+ 29. GO:0005743      -   1085 occurrences
+ 30. GO:0009536      -   1080 occurrences
+ 31. GO:0009986      -   1075 occurrences
+ 32. GO:0045892      -   1068 occurrences
+ 33. GO:0000976      -   1064 occurrences
+ 34. GO:0098978      -    988 occurrences
+ 35. GO:0000785      -    950 occurrences
+ 36. GO:0000978      -    880 occurrences
+ 37. GO:0048471      -    878 occurrences
+ 38. GO:0006357      -    875 occurrences
+ 39. GO:0010628      -    875 occurrences
+ 40. GO:0004674      -    843 occurrences
+ 41. GO:0007165      -    804 occurrences
+ 42. GO:0043025      -    799 occurrences
+ 43. GO:0031012      -    796 occurrences
+ 44. GO:0003735      -    781 occurrences
+ 45. GO:0005813      -    768 occurrences
+ 46. GO:0003682      -    760 occurrences
+ 47. GO:0006974      -    736 occurrences
+ 48. GO:0043066      -    733 occurrences
+ 49. GO:0005759      -    721 occurrences
+ 50. GO:0001228      -    715 occurrences
+
+... and 19950 more terms
+
+================================================================================
+FREQUENCY DISTRIBUTION
+================================================================================
+Mean frequency: 26.51
+Median frequency: 7.00
+Min frequency: 2
+Max frequency: 33713
+Std deviation: 306.21

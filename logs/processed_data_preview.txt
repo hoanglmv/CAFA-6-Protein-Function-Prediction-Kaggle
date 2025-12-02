@@ -2,9 +2,14 @@
 DATASET OVERVIEW
 ================================================================================
 
-Train samples: 82404
+Configuration:
+  Top N terms: 20000
+  Min term frequency: 1
+
+Train samples: 82286
 Test samples: 224309
-Vocabulary size: 26125
+Vocabulary size: 20000
+Total terms in dataset: 26125
 
 ================================================================================
 TRAIN DATA (First 10 rows)
@@ -14,17 +19,17 @@ Sample 1:
   ID: A0A0C5B5G6
   Sequence (first 50 chars): MRWQEMGYIFYPRKLR...
   Taxonomy: 9606
-  GO terms count: 14
-  GO terms (first 5): ['GO:0005739', 'GO:0033687', 'GO:0048630', 'GO:0140297', 'GO:0005615']
-  GO term indices (first 5): [np.int64(2832), np.int64(10336), np.int64(15065), np.int64(21638), np.int64(2763)]
+  GO terms count: 12
+  GO terms (first 5): ['GO:0005615', 'GO:0033687', 'GO:0043610', 'GO:0032147', 'GO:0006357']
+  GO term indices (first 5): [np.int64(2383), np.int64(8644), np.int64(10661), np.int64(7978), np.int64(2801)]
 
 Sample 2:
   ID: A0JNW5
   Sequence (first 50 chars): MAGIIKKQILKHLSRFTKNLSPDKINLSTLKGEGELKNLELDEEVLQNML...
   Taxonomy: 9606
-  GO terms count: 8
-  GO terms (first 5): ['GO:0034498', 'GO:0005829', 'GO:0062069', 'GO:0042803', 'GO:0120009']
-  GO term indices (first 5): [np.int64(10732), np.int64(2892), np.int64(17678), np.int64(12453), np.int64(21289)]
+  GO terms count: 7
+  GO terms (first 5): ['GO:0005769', 'GO:0005829', 'GO:0120013', 'GO:0005515', 'GO:0034498']
+  GO term indices (first 5): [np.int64(2460), np.int64(2501), np.int64(16796), np.int64(2336), np.int64(8916)]
 
 Sample 3:
   ID: A0JP26
@@ -32,31 +37,31 @@ Sample 3:
   Taxonomy: 9606
   GO terms count: 1
   GO terms (first 5): ['GO:0005515']
-  GO term indices (first 5): [np.int64(2709)]
+  GO term indices (first 5): [np.int64(2336)]
 
 Sample 4:
   ID: A0PK11
   Sequence (first 50 chars): MPGWFKKAWYGLASLLSFSSFILIIVALVVPHWLSGKILCQTGVDLVNAT...
   Taxonomy: 9606
   GO terms count: 2
-  GO terms (first 5): ['GO:0005515', 'GO:0007605']
-  GO term indices (first 5): [np.int64(2709), np.int64(4063)]
+  GO terms (first 5): ['GO:0007605', 'GO:0005515']
+  GO term indices (first 5): [np.int64(3576), np.int64(2336)]
 
 Sample 5:
   ID: A1A4S6
   Sequence (first 50 chars): MGLQPLEFSDCYLDSPWFRERIRAHEAELERTNKFIKELIKDGKNLIAAT...
   Taxonomy: 9606
   GO terms count: 5
-  GO terms (first 5): ['GO:0005829', 'GO:0005096', 'GO:0051056', 'GO:0005515', 'GO:0010008']
-  GO term indices (first 5): [np.int64(2892), np.int64(2508), np.int64(15707), np.int64(2709), np.int64(5373)]
+  GO terms (first 5): ['GO:0005829', 'GO:0051056', 'GO:0005515', 'GO:0005096', 'GO:0010008']
+  GO term indices (first 5): [np.int64(2501), np.int64(12744), np.int64(2336), np.int64(2154), np.int64(4625)]
 
 Sample 6:
   ID: A1A519
   Sequence (first 50 chars): MKRRQKRKHLENEESQETAEKGGGMSKSQEDALQPGSTRVAKGWSQGVGE...
   Taxonomy: 9606
   GO terms count: 3
-  GO terms (first 5): ['GO:0006366', 'GO:0045893', 'GO:0005634']
-  GO term indices (first 5): [np.int64(3231), np.int64(13844), np.int64(2772)]
+  GO terms (first 5): ['GO:0005634', 'GO:0045893', 'GO:0006366']
+  GO term indices (first 5): [np.int64(2389), np.int64(11366), np.int64(2808)]
 
 Sample 7:
   ID: A1L190
@@ -64,23 +69,23 @@ Sample 7:
   Taxonomy: 9606
   GO terms count: 1
   GO terms (first 5): ['GO:0005515']
-  GO term indices (first 5): [np.int64(2709)]
+  GO term indices (first 5): [np.int64(2336)]
 
 Sample 8:
   ID: A1L3X0
   Sequence (first 50 chars): MAFSDLTSRTVHLYDNWIKDADPRVEDWLLMSSPLPQTILLGFYVYFVTS...
   Taxonomy: 9606
   GO terms count: 8
-  GO terms (first 5): ['GO:0009922', 'GO:0005789', 'GO:0034626', 'GO:0035338', 'GO:0005783']
-  GO term indices (first 5): [np.int64(5309), np.int64(2866), np.int64(10777), np.int64(11130), np.int64(2860)]
+  GO terms (first 5): ['GO:0019367', 'GO:0042761', 'GO:0035338', 'GO:0009922', 'GO:0005789']
+  GO term indices (first 5): [np.int64(6452), np.int64(10238), np.int64(9240), np.int64(4570), np.int64(2476)]
 
 Sample 9:
   ID: A1X283
   Sequence (first 50 chars): MPPRRSIVEVKVLDVQKRRVPNKHYVYIIRVTWSSGSTEAIYRRYSKFFD...
   Taxonomy: 9606
   GO terms count: 8
-  GO terms (first 5): ['GO:0007507', 'GO:0072657', 'GO:0001654', 'GO:0001501', 'GO:0022617']
-  GO term indices (first 5): [np.int64(4007), np.int64(19224), np.int64(602), np.int64(508), np.int64(8229)]
+  GO terms (first 5): ['GO:0001654', 'GO:0060348', 'GO:0006801', 'GO:0007507', 'GO:0005515']
+  GO term indices (first 5): [np.int64(550), np.int64(13543), np.int64(3097), np.int64(3525), np.int64(2336)]
 
 Sample 10:
   ID: A2A2Y4
@@ -88,7 +93,7 @@ Sample 10:
   Taxonomy: 9606
   GO terms count: 1
   GO terms (first 5): ['GO:0005515']
-  GO term indices (first 5): [np.int64(2709)]
+  GO term indices (first 5): [np.int64(2336)]
 
 ================================================================================
 TEST DATA (First 10 rows)
@@ -169,10 +174,10 @@ STATISTICS
 ================================================================================
 
 Train set:
-  Average GO terms per protein: 6.52
-  Average sequence length: 525.79
-  Unique proteins: 82404
-  Unique taxonomies: 1381
+  Average GO terms per protein: 6.44
+  Average sequence length: 525.84
+  Unique proteins: 82286
+  Unique taxonomies: 1374
 
 Test set:
   Average sequence length: 429.23
