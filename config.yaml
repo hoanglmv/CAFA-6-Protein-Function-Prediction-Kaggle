@@ -1,3 +1,4 @@
-bert : 
-    max_length: 2048
-    
+esm : 
+    model_name: facebook/esm2_t36_3B_UR50D
+    max_length: 4096
+
