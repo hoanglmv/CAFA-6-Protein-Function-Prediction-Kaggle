@@ -7,15 +7,11 @@ import os
 # ==============================
 # CẤU HÌNH ĐƯỜNG DẪN
 # ==============================
-
-BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-
-# Đường dẫn vào data
+PROJ_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..','..'))
 BASE_DIR = os.path.join(PROJ_DIR, 'data', 'Train')
 TRAIN_FASTA_PATH = os.path.join(BASE_DIR, 'train_sequences.fasta')
 TRAIN_TERMS_PATH = os.path.join(BASE_DIR, 'train_terms.tsv')
 TRAIN_TAXONOMY_PATH = os.path.join(BASE_DIR, 'train_taxonomy.tsv') # <--- MỚI
-
 # ==============================
 # BƯỚC 1: ĐỌC FASTA & TRÍCH XUẤT FEATURES (PE & Reviewed)
 # ==============================
@@ -125,7 +121,7 @@ else:
 # ==============================
 
 # Lưu vào thư mục models/ver1
-SAVE_DIR = os.path.join(PROJ_DIR, 'models', 'ver4')
+SAVE_DIR = os.path.join(PROJ_DIR, 'models', 'ver5')
 os.makedirs(SAVE_DIR, exist_ok=True)
 
 SAVE_PATH = os.path.join(SAVE_DIR, 'processed_data.pkl')
