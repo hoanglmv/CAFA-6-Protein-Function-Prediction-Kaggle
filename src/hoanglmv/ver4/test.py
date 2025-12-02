@@ -11,8 +11,8 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 # 1. CONFIGURATION
 # ==========================================
 class TestConfig:
-    # Lùi 2 cấp từ src/ver4 về Project Root
-    BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+    
+    BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 
     # Input Test Data
     TEST_FASTA_PATH = os.path.join(BASE_DIR, 'data', 'Test', 'testsuperset.fasta')

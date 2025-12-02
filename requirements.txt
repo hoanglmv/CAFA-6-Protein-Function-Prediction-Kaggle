@@ -5,6 +5,5 @@ tensorflow
 scikit-learn
 biopython
 matplotlib
-re
 torch
 biopython

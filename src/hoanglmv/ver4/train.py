@@ -16,7 +16,7 @@ from IPython.display import display, clear_output
 # ==========================================
 class Config:
     # Project Root
-    BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+    BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
     
     # Input Data: Tái sử dụng data từ ver3 (đỡ phải copy file nặng)
     # Nếu bạn đã move file sang ver4 thì sửa lại path này

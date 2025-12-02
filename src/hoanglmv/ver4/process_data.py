@@ -8,8 +8,7 @@ import os
 # CẤU HÌNH ĐƯỜNG DẪN
 # ==============================
 
-# Lùi lên 2 cấp để về đúng thư mục gốc dự án
-PROJ_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 
 # Đường dẫn vào data
 BASE_DIR = os.path.join(PROJ_DIR, 'data', 'Train')
