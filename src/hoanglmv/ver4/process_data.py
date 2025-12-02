@@ -6,9 +6,10 @@ import os
 
 # ==============================
 # CẤU HÌNH ĐƯỜNG DẪN
-# ==============================
 
-BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+
+# ==============================
+PROJ_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..','..'))
 
 # Đường dẫn vào data
 BASE_DIR = os.path.join(PROJ_DIR, 'data', 'Train')
@@ -125,7 +126,7 @@ else:
 # ==============================
 
 # Lưu vào thư mục models/ver1
-SAVE_DIR = os.path.join(PROJ_DIR, 'models', 'ver4')
+SAVE_DIR = os.path.join(PROJ_DIR, 'models', 'ver5')
 os.makedirs(SAVE_DIR, exist_ok=True)
 
 SAVE_PATH = os.path.join(SAVE_DIR, 'processed_data.pkl')

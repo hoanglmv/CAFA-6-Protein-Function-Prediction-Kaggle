@@ -8,7 +8,7 @@ from sentence_transformers import SentenceTransformer
 # ==========================================
 # CẤU HÌNH ĐƯỜNG DẪN
 # ==========================================
-BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')) # Căn chỉnh lại cho đúng thư mục dự án của bạn
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..','..')) 
 DATA_DIR = os.path.join(BASE_DIR, 'data')
 
 # 1. File chứa ID loài đã học (Train)
@@ -18,7 +18,7 @@ TRAIN_TAX_PATH = os.path.join(DATA_DIR, "Train", "train_taxonomy.tsv")
 # File này Kaggle cung cấp: TaxID <tab> Scientific Name
 TAXON_LIST_PATH = os.path.join(DATA_DIR, "Test", "testsuperset-taxon-list.tsv")
 
-OUTPUT_FILE = os.path.join(BASE_DIR, "models", "ver4", "taxonomy_mapping.tsv")
+OUTPUT_FILE = os.path.join(BASE_DIR, "models", "ver5", "taxonomy_mapping.tsv")
 
 def main():
     print("🚀 Bắt đầu Mapping Taxonomy...")

@@ -12,9 +12,9 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 # 1. CONFIGURATION
 # ==========================================
 class TestConfig:
-    BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+    BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..','..'))
     TEST_FASTA_PATH = os.path.join(BASE_DIR, 'data', 'Test', 'testsuperset.fasta')
-    MODEL_DIR = os.path.join(BASE_DIR, 'models', 'ver4')
+    MODEL_DIR = os.path.join(BASE_DIR, 'models', 'ver5')
     
     # Các file cần thiết
     LABELS_MAP_PATH = os.path.join(MODEL_DIR, 'labels_map.pkl')
@@ -23,7 +23,7 @@ class TestConfig:
     # FILE MỚI: Map ID Lạ -> ID Quen
     TAX_CONVERSION_PATH = os.path.join(MODEL_DIR, 'taxonomy_mapping.tsv') 
 
-    SUBMISSION_PATH = os.path.join(BASE_DIR, 'submission.tsv')
+    SUBMISSION_PATH = os.path.join(MODEL_DIR, 'submission.tsv')
     MODEL_PATH = None 
     MAX_SEQ_LEN = 512
     BATCH_SIZE = 64
