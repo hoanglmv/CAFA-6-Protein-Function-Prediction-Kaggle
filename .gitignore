@@ -6,3 +6,4 @@ src/viewer_plot.png
 venv/
 models/
 *.gz
+*.tab

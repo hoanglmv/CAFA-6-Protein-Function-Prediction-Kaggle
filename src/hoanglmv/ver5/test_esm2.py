@@ -8,13 +8,13 @@ from tensorflow.keras import models
 
 # Config (Giống Train)
 class Config:
-    BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+    BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..','..'))
     MODEL_DIR = os.path.join(BASE_DIR, 'models', 'esm2_ver1')
     TEST_FASTA = os.path.join(BASE_DIR, 'data', 'Test', 'testsuperset.fasta')
     TEST_EMB = os.path.join(MODEL_DIR, 'test_embeddings.npy')
     TEST_IDS = os.path.join(MODEL_DIR, 'test_ids.pkl')
     
-    TAX_CONVERSION = os.path.join(BASE_DIR, 'models', 'ver4', 'taxonomy_mapping.tsv') # Dùng lại file map của ver4
+    TAX_CONVERSION = os.path.join(BASE_DIR, 'models', 'ver5', 'taxonomy_mapping.tsv') # Dùng lại file map của ver4
     SUBMISSION = os.path.join(BASE_DIR, 'submission_esm2.tsv')
     BATCH_SIZE = 128
 
