@@ -7,20 +7,25 @@ from sklearn.model_selection import train_test_split
 from tensorflow.keras import layers, models, callbacks
 
 # ==========================================
-# 1. CẤU HÌNH
+# 1. CẤU HÌNH (CONFIGURATION)
 # ==========================================
 class Config:
-    BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..','..'))
-    DATA_DIR = os.path.join(BASE_DIR, 'data', 'processed2')
-    MODEL_DIR = os.path.join(BASE_DIR, 'models', 'ver6')
+    # Lùi 3 cấp thư mục để về root (tùy vị trí file script của bạn)
+    # Giả sử file này ở src/hoanglmv/ver6/train.py
+    BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
     
+    # Input: Thư mục chứa file parquet đã xử lý
+    DATA_DIR = os.path.join(BASE_DIR, 'data', 'processed2')
     TRAIN_FILE = os.path.join(DATA_DIR, 'train.parquet')
     
+    # Output: Lưu model vào ver6 (ĐÃ SET ĐÚNG)
+    MODEL_DIR = os.path.join(BASE_DIR, 'models', 'ver6')
+    
     # Hyperparameters
-    BATCH_SIZE = 64 # Có thể tăng lên 128/256 nếu RAM nhiều
+    BATCH_SIZE = 64
     EPOCHS = 30
     LEARNING_RATE = 1e-3
-    NUM_CLASSES = 1500 # Số lượng nhãn GO
+    NUM_CLASSES = 1500 
     
     @staticmethod
     def setup_gpu():
@@ -30,9 +35,13 @@ class Config:
                 for gpu in gpus: tf.config.experimental.set_memory_growth(gpu, True)
                 print(f"✅ GPU Activated: {gpus[0].name}")
             except: pass
+        else:
+            print("⚠️ Running on CPU")
 
+# Setup môi trường & tạo thư mục output
 Config.setup_gpu()
 os.makedirs(Config.MODEL_DIR, exist_ok=True)
+print(f"📂 Model sẽ được lưu tại: {Config.MODEL_DIR}")
 
 # ==========================================
 # 2. CUSTOM LOSS (ASYMMETRIC LOSS)
@@ -62,27 +71,22 @@ class AsymmetricLoss(tf.keras.losses.Loss):
 # ==========================================
 def load_and_process_data(filepath):
     print(f"📖 Đang đọc file: {filepath}")
+    if not os.path.exists(filepath):
+        raise FileNotFoundError(f"❌ Không tìm thấy file train tại: {filepath}")
+        
     df = pd.read_parquet(filepath)
     
-    # 1. Chuyển đổi Embedding (List -> Numpy Array)
-    # df['embedding'] đang là cột chứa các list, cần stack thành ma trận 2D
     print("   -> Processing Embeddings...")
+    # Stack để chuyển list of lists thành numpy array 2D
     X_emb = np.stack(df['embedding'].values)
     
-    # 2. Chuyển đổi Superkingdom (One-hot)
     print("   -> Processing Taxonomy Groups...")
     X_tax = np.stack(df['superkingdom'].values)
     
-    # 3. Xử lý Nhãn (Labels) & Tạo Mapping
     print("   -> Processing Labels & Creating Map...")
-    
-    # Tạo mapping: index -> GO Term String
-    # Dựa vào cột 'go_terms_id' (index) và 'go_terms' (string)
-    # Ta cần lấy mẫu để xây dựng lại từ điển này
     idx_to_term = {}
     
-    # Duyệt qua một số dòng để map lại (hoặc duyệt hết nếu cần chính xác 100%)
-    # Giả định: go_terms_id và go_terms đồng bộ thứ tự
+    # Xây dựng mapping index -> GO Term
     for terms, ids in zip(df['go_terms'], df['go_terms_id']):
         if len(idx_to_term) >= Config.NUM_CLASSES: break
         for term_str, term_id in zip(terms, ids):
@@ -135,7 +139,7 @@ if __name__ == "__main__":
     # Load Data
     X_emb, X_tax, Y, idx_to_term = load_and_process_data(Config.TRAIN_FILE)
     
-    # Lưu lại file map để dùng cho test.py
+    # Lưu map để dùng cho inference
     map_path = os.path.join(Config.MODEL_DIR, 'idx_to_term.pkl')
     with open(map_path, 'wb') as f:
         pickle.dump(idx_to_term, f)
@@ -156,9 +160,15 @@ if __name__ == "__main__":
     model.summary()
     
     # Callbacks
+    # Lưu best model vào models/ver6/best_model.keras
     cbs = [
-        callbacks.ModelCheckpoint(os.path.join(Config.MODEL_DIR, 'best_model.keras'), 
-                                  save_best_only=True, monitor='val_auc', mode='max', verbose=1),
+        callbacks.ModelCheckpoint(
+            filepath=os.path.join(Config.MODEL_DIR, 'best_model.keras'), 
+            save_best_only=True, 
+            monitor='val_auc', 
+            mode='max', 
+            verbose=1
+        ),
         callbacks.EarlyStopping(monitor='val_auc', mode='max', patience=5, restore_best_weights=True),
         callbacks.ReduceLROnPlateau(monitor='val_auc', factor=0.5, patience=2, verbose=1)
     ]

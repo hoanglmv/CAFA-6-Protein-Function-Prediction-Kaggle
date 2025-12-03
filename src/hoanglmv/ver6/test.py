@@ -21,8 +21,8 @@ class Config:
     # Model Directory (Nơi chứa model ver6 đã train)
     MODEL_DIR = os.path.join(BASE_DIR, 'models', 'ver6')
     
-    # Output Submission
-    SUBMISSION_FILE = os.path.join(BASE_DIR, 'submission.tsv')
+    # Output Submission (Sửa: Lưu trực tiếp vào folder model)
+    SUBMISSION_FILE = os.path.join(MODEL_DIR, 'submission.tsv')
     
     # Inference Params
     BATCH_SIZE = 256  # Batch lớn để chạy nhanh hơn (vì chỉ cần feed forward)
@@ -99,6 +99,9 @@ def run_inference():
     # --- BƯỚC 3: DỰ ĐOÁN & GHI FILE ---
     print(f"   -> Predicting & Writing to {Config.SUBMISSION_FILE}...")
     
+    # Đảm bảo thư mục tồn tại (thường model_dir đã có rồi, nhưng check cho chắc)
+    os.makedirs(os.path.dirname(Config.SUBMISSION_FILE), exist_ok=True)
+
     with open(Config.SUBMISSION_FILE, 'w') as f:
         # Ghi Header (theo chuẩn CAFA)
         f.write("ObjectId\tGO-Term\tPrediction\n")
