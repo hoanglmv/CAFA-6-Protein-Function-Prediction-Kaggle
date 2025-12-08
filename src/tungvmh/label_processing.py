@@ -42,10 +42,8 @@ def main():
 
         if term in graph:
             node = graph.nodes[term]
-            # Try to get definition, fallback to name if not available
             if "def" in node:
-                # Definition is usually a string like '"The definition text" [Source]'
-                # We want just the text inside the quotes
+                print("Definition found for term:", term)
                 def_str = node["def"]
                 if def_str.startswith('"'):
                     def_text = def_str.split('"')[1]
@@ -53,8 +51,10 @@ def main():
                     def_text = def_str
                 definitions.append(def_text)
             elif "name" in node:
+                print("Name found for term:", term)
                 definitions.append(node["name"])
             else:
+                print("No definition or name found for term:", term)
                 definitions.append(term)  # Fallback to ID if nothing else
         else:
             print(
