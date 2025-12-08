@@ -22,7 +22,7 @@ MODEL_SAVE_DIR = os.path.join(PROJECT_ROOT, "models")
 MODEL_SAVE_PATH = os.path.join(MODEL_SAVE_DIR, "align_model.pth")
 BATCH_SIZE = 32
 EPOCHS = 8
-LEARNING_RATE = 3e-4
+LEARNING_RATE = 1e-3
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -42,14 +42,11 @@ class ProteinGODataset(Dataset):
         row = self.train_df.iloc[idx]
 
         # Protein Embedding
-        # Assuming embedding column contains lists/arrays of floats
         prot_emb = torch.tensor(row["embedding"], dtype=torch.float32)
 
-        # Multi-hot Label Vector
+        # Multi-hot label vector
         label_vec = torch.zeros(self.num_classes, dtype=torch.float32)
 
-        # go_terms column contains list of GO IDs (strings) e.g. ['GO:0005615', ...]
-        # Check if go_terms is not None/NaN
         go_terms = row["go_terms"]
         if go_terms is not None and isinstance(go_terms, (list, np.ndarray)):
             for go_id in go_terms:
@@ -62,7 +59,7 @@ class ProteinGODataset(Dataset):
 def train():
     print(f"Using device: {DEVICE}")
 
-    # 1. Load Data
+    # Load data
     print("Loading data...")
     train_df = pd.read_parquet(TRAIN_PATH)
     label_df = pd.read_parquet(LABEL_PATH)
@@ -70,13 +67,11 @@ def train():
     print(f"Train samples: {len(train_df)}")
     print(f"Total GO terms: {len(label_df)}")
 
-    # 2. Prepare Dataset & DataLoader
+    # Dataset & DataLoader
     dataset = ProteinGODataset(train_df, label_df)
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
 
-    # 3. Prepare Model
-    # Load GO embeddings tensor
-    # label_df['embedding'] contains arrays of shape (768,)
+    # Prepare GO embeddings
     print("Preparing GO embeddings...")
     go_embeddings_list = label_df["embedding"].tolist()
     go_embeddings_tensor = torch.tensor(
@@ -85,11 +80,16 @@ def train():
 
     model = ProteinGOAligner(esm_dim=2560, go_emb_dim=768, joint_dim=512).to(DEVICE)
 
-    # 4. Loss & Optimizer
-    criterion = nn.BCEWithLogitsLoss()
+    # Loss & Optimizer
+    # ========================================
+    # Added pos_weight as requested
+    pos_weight = torch.full((dataset.num_classes,), 15.0).to(DEVICE)
+    criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+    # ========================================
+
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
-    # 5. Training Loop
+    # Training Loop
     os.makedirs(MODEL_SAVE_DIR, exist_ok=True)
 
     print("Starting training...")
@@ -104,9 +104,6 @@ def train():
 
             optimizer.zero_grad()
 
-            # Forward pass
-            # We pass the full set of GO embeddings for every batch
-            # This computes similarity against ALL GO terms
             logits = model(prot_emb, go_embeddings_tensor)
 
             loss = criterion(logits, labels)
@@ -120,7 +117,6 @@ def train():
         avg_loss = total_loss / len(dataloader)
         print(f"Epoch {epoch+1} Average Loss: {avg_loss:.4f}")
 
-        # Save checkpoint
         torch.save(model.state_dict(), MODEL_SAVE_PATH)
         print(f"Model saved to {MODEL_SAVE_PATH}")
 
@@ -135,9 +131,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.dry_run:
-        print("Dry run mode enabled. Reducing epochs and data size.")
+        print("Dry run mode enabled. Reducing epochs.")
         EPOCHS = 1
-        # We can't easily reduce data size here without reloading,
-        # but the loop will run for 1 epoch which is enough for verification
 
     train()

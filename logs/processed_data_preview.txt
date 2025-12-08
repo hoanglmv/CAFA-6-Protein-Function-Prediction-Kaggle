@@ -20,16 +20,16 @@ Sample 1:
   Sequence (first 50 chars): MRWQEMGYIFYPRKLR...
   Taxonomy: 9606
   GO terms count: 12
-  GO terms (first 5): ['GO:0005615', 'GO:0033687', 'GO:0043610', 'GO:0032147', 'GO:0006357']
-  GO term indices (first 5): [np.int64(2383), np.int64(8644), np.int64(10661), np.int64(7978), np.int64(2801)]
+  GO terms (first 5): ['GO:0033687', 'GO:0003677', 'GO:0140297', 'GO:0001649', 'GO:0005634']
+  GO term indices (first 5): [np.int64(8644), np.int64(1314), np.int64(17015), np.int64(545), np.int64(2389)]
 
 Sample 2:
   ID: A0JNW5
   Sequence (first 50 chars): MAGIIKKQILKHLSRFTKNLSPDKINLSTLKGEGELKNLELDEEVLQNML...
   Taxonomy: 9606
   GO terms count: 7
-  GO terms (first 5): ['GO:0005769', 'GO:0005829', 'GO:0120013', 'GO:0005515', 'GO:0034498']
-  GO term indices (first 5): [np.int64(2460), np.int64(2501), np.int64(16796), np.int64(2336), np.int64(8916)]
+  GO terms (first 5): ['GO:0042803', 'GO:0034498', 'GO:0005769', 'GO:0005515', 'GO:0005829']
+  GO term indices (first 5): [np.int64(10263), np.int64(8916), np.int64(2460), np.int64(2336), np.int64(2501)]
 
 Sample 3:
   ID: A0JP26
@@ -52,8 +52,8 @@ Sample 5:
   Sequence (first 50 chars): MGLQPLEFSDCYLDSPWFRERIRAHEAELERTNKFIKELIKDGKNLIAAT...
   Taxonomy: 9606
   GO terms count: 5
-  GO terms (first 5): ['GO:0005829', 'GO:0051056', 'GO:0005515', 'GO:0005096', 'GO:0010008']
-  GO term indices (first 5): [np.int64(2501), np.int64(12744), np.int64(2336), np.int64(2154), np.int64(4625)]
+  GO terms (first 5): ['GO:0010008', 'GO:0005096', 'GO:0005829', 'GO:0051056', 'GO:0005515']
+  GO term indices (first 5): [np.int64(4625), np.int64(2154), np.int64(2501), np.int64(12744), np.int64(2336)]
 
 Sample 6:
   ID: A1A519
@@ -76,16 +76,16 @@ Sample 8:
   Sequence (first 50 chars): MAFSDLTSRTVHLYDNWIKDADPRVEDWLLMSSPLPQTILLGFYVYFVTS...
   Taxonomy: 9606
   GO terms count: 8
-  GO terms (first 5): ['GO:0019367', 'GO:0042761', 'GO:0035338', 'GO:0009922', 'GO:0005789']
-  GO term indices (first 5): [np.int64(6452), np.int64(10238), np.int64(9240), np.int64(4570), np.int64(2476)]
+  GO terms (first 5): ['GO:0009922', 'GO:0035338', 'GO:0034626', 'GO:0005789', 'GO:0019367']
+  GO term indices (first 5): [np.int64(4570), np.int64(9240), np.int64(8954), np.int64(2476), np.int64(6452)]
 
 Sample 9:
   ID: A1X283
   Sequence (first 50 chars): MPPRRSIVEVKVLDVQKRRVPNKHYVYIIRVTWSSGSTEAIYRRYSKFFD...
   Taxonomy: 9606
   GO terms count: 8
-  GO terms (first 5): ['GO:0001654', 'GO:0060348', 'GO:0006801', 'GO:0007507', 'GO:0005515']
-  GO term indices (first 5): [np.int64(550), np.int64(13543), np.int64(3097), np.int64(3525), np.int64(2336)]
+  GO terms (first 5): ['GO:0022617', 'GO:0001654', 'GO:0060348', 'GO:0001501', 'GO:0007507']
+  GO term indices (first 5): [np.int64(6899), np.int64(550), np.int64(13543), np.int64(464), np.int64(3525)]
 
 Sample 10:
   ID: A2A2Y4
