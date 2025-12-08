@@ -18,8 +18,8 @@ TEST_PATH = os.path.join(DATA_DIR, "test.parquet")
 LABEL_PATH = os.path.join(DATA_DIR, "label.parquet")
 MODEL_PATH = os.path.join(PROJECT_ROOT, "models/align_model.pth")
 OUTPUT_PATH = os.path.join(PROJECT_ROOT, "data/submission.tsv")
-BATCH_SIZE = 32
-TOP_K = 100  # Number of predictions to keep per protein
+BATCH_SIZE = 16
+TOP_K = 15  # Number of predictions to keep per protein
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
