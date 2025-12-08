@@ -4,7 +4,6 @@ import argparse
 import numpy as np
 import pandas as pd
 import torch
-import torch.nn as nn
 import networkx as nx
 import obonet
 from tqdm import tqdm
@@ -17,64 +16,110 @@ from align_embed.protein_go_aligner import ProteinGOAligner
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, "../../"))
 DATA_DIR = os.path.join(PROJECT_ROOT, "data/processed2")
+
 TEST_PATH = os.path.join(DATA_DIR, "test.parquet")
 LABEL_PATH = os.path.join(DATA_DIR, "label.parquet")
-OBO_PATH = os.path.join(PROJECT_ROOT, "data/Train/go-basic.obo")  # File OBO gốc
+OBO_PATH = os.path.join(PROJECT_ROOT, "data/Train/go-basic.obo")
 MODEL_PATH = os.path.join(PROJECT_ROOT, "models/align_model.pth")
 OUTPUT_PATH = os.path.join(PROJECT_ROOT, "data/submission.tsv")
 
-BATCH_SIZE = 1024
-TOP_K = 20
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# [CẤU HÌNH DIAMOND]
+DIAMOND_RAW_PATH = os.path.join(DATA_DIR, "diamond_matches.tsv")
+TRAIN_TERMS_PATH = os.path.join(PROJECT_ROOT, "data/Train/train_terms.tsv")
 
+TOP_K = 100 
+BATCH_SIZE = 512
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+ALPHA = 0.5 
 
 def get_propagation_steps(obo_path, term_to_idx):
-    """
-    Sử dụng obonet và networkx để tạo danh sách lan truyền điểm.
-    Trả về danh sách: [(child_idx, [parent_indices]), ...] được sắp xếp theo Topological Order.
-    """
-    print(f"Loading OBO graph from {obo_path} using obonet...")
-    # obonet đọc file và trả về 1 networkx DiGraph
-    # Mặc định: Edge đi từ Child -> Parent (is_a relationship)
+    print(f"Loading OBO graph from {obo_path}...")
     graph = obonet.read_obo(obo_path)
-
-    # Chỉ giữ lại các nodes có trong tập label của chúng ta
+    
     valid_terms = set(term_to_idx.keys())
-
-    # Tạo subgraph chỉ chứa các terms hợp lệ
-    # Lưu ý: Nếu A -> B -> C mà B không có trong valid_terms thì A sẽ mất liên kết với C.
-    # Tuy nhiên, với tập dataset lớn, hầu hết các term quan trọng đều được giữ.
     subgraph = graph.subgraph(valid_terms)
-
+    
     print("Sorting graph topologically...")
-    # Topological sort đảm bảo chúng ta xử lý node Con trước node Cha
-    # Nếu A -> B (A là con B), sort sẽ trả về [A, B, ...]
     try:
         topo_order = list(nx.topological_sort(subgraph))
     except nx.NetworkXUnfeasible:
-        print("Warning: Graph contains cycles! Fallback to arbitrary order.")
+        print("Cycle detected, fallback to arbitrary order.")
         topo_order = list(subgraph.nodes())
-
+        
     propagation_steps = []
-
-    # Tạo các bước propagate
-    for child in tqdm(topo_order, desc="Building Propagation Steps"):
-        if child not in term_to_idx:
-            continue
-
+    for child in tqdm(topo_order, desc="Building Propagation Map"):
+        if child not in term_to_idx: continue
         child_idx = term_to_idx[child]
-
-        # Tìm cha trực tiếp trong subgraph
-        # successors trong obonet graph (Child -> Parent) chính là Parents
         parents = list(subgraph.successors(child))
-
-        if parents:
-            parent_indices = [term_to_idx[p] for p in parents if p in term_to_idx]
-            if parent_indices:
-                propagation_steps.append((child_idx, parent_indices))
-
+        parent_indices = [term_to_idx[p] for p in parents if p in term_to_idx]
+        if parent_indices:
+            propagation_steps.append((child_idx, parent_indices))
+            
     return propagation_steps
 
+def load_and_process_diamond(diamond_file, train_terms_file, test_ids, term_to_idx):
+    """
+    Xử lý Diamond Blastp và FIX LỖI ID MISMATCH.
+    """
+    if not os.path.exists(diamond_file):
+        print(f"Warning: Diamond file not found at {diamond_file}. Using DL model only.")
+        return None
+    
+    print("Processing Diamond results for Ensemble...")
+    
+    # 1. Load Diamond Matches
+    print("  Loading matches...")
+    # Cột 0: TestID, Cột 1: TrainID, Cột 2: Pident
+    matches = pd.read_csv(diamond_file, sep='\t', usecols=[0, 1, 2], names=['TestID', 'TrainID', 'Pident'])
+    
+    # --- [CRITICAL FIX] XỬ LÝ ID TRAIN (sp|ID|NAME -> ID) ---
+    print("  Cleaning Train IDs (Removing 'sp|' prefix)...")
+    # Tách chuỗi bằng '|' và lấy phần tử thứ 2 (index 1)
+    # Ví dụ: "sp|A0A0C5B5G6|MOTSC_HUMAN" -> "A0A0C5B5G6"
+    matches['TrainID'] = matches['TrainID'].apply(lambda x: x.split('|')[1] if isinstance(x, str) and '|' in x else str(x))
+    # -------------------------------------------------------
+
+    # Filter: Chỉ giữ lại các protein Test có trong tập test hiện tại
+    valid_test_ids = set(test_ids)
+    matches = matches[matches['TestID'].isin(valid_test_ids)]
+    
+    # Normalize Score: 100 -> 1.0
+    matches['Score'] = matches['Pident'] / 100.0
+    
+    # 2. Load Ground Truth Labels
+    print("  Loading train labels...")
+    train_terms = pd.read_csv(train_terms_file, sep='\t', usecols=['EntryID', 'term'])
+    train_terms.columns = ['TrainID', 'GoID']
+    
+    # 3. Merge & Map
+    print("  Merging Homology data...")
+    # Giờ đây 2 cột TrainID đã khớp format, merge sẽ chạy đúng
+    merged = matches.merge(train_terms, on='TrainID', how='inner')
+    
+    if len(merged) == 0:
+        print("WARNING: Merge resulted in 0 records! Check IDs again.")
+        return None
+
+    # Group by TestID + GO -> Max Score
+    print(f"  Grouping scores from {len(merged)} matches...")
+    diamond_preds = merged.groupby(['TestID', 'GoID'])['Score'].max().reset_index()
+    
+    # 4. Convert to Dictionary
+    print("  Building lookup dictionary...")
+    diamond_scores_map = {}
+    
+    for row in tqdm(diamond_preds.itertuples(index=False), total=len(diamond_preds), desc="Mapping Diamond"):
+        tid = row.TestID
+        goid = row.GoID
+        score = row.Score
+        
+        if goid in term_to_idx:
+            go_idx = term_to_idx[goid]
+            if tid not in diamond_scores_map:
+                diamond_scores_map[tid] = {}
+            diamond_scores_map[tid][go_idx] = score
+            
+    return diamond_scores_map
 
 def predict():
     print(f"Using device: {DEVICE}")
@@ -83,124 +128,99 @@ def predict():
     print("Loading data...")
     test_df = pd.read_parquet(TEST_PATH)
     label_df = pd.read_parquet(LABEL_PATH)
-
-    print(f"Test samples: {len(test_df)}")
-    print(f"Total GO terms: {len(label_df)}")
-
-    # 2. Prepare Consistency Enforcement (Optimized)
+    
     valid_terms_list = label_df["name"].tolist()
     term_to_idx = {term: idx for idx, term in enumerate(valid_terms_list)}
-
-    # Dùng hàm mới với obonet
+    
     propagation_steps = get_propagation_steps(OBO_PATH, term_to_idx)
-    print(f"Propagation rules created: {len(propagation_steps)} steps")
 
-    # 3. Prepare Model
+    # 2. Load & Process Diamond Scores (ON THE FLY)
+    diamond_data = load_and_process_diamond(
+        DIAMOND_RAW_PATH, 
+        TRAIN_TERMS_PATH, 
+        test_df['id'].values, 
+        term_to_idx
+    )
+
+    # 3. Load Model
     print("Loading model...")
-    go_embeddings_list = label_df["embedding"].tolist()
-
-    # Sử dụng np.stack để tạo tensor nhanh hơn
-    go_embeddings_tensor = torch.tensor(
-        np.stack(go_embeddings_list), dtype=torch.float32
-    ).to(DEVICE)
-
+    go_embeddings = torch.tensor(np.stack(label_df["embedding"].tolist())).float().to(DEVICE)
+    
     model = ProteinGOAligner(esm_dim=2560, go_emb_dim=768, joint_dim=512).to(DEVICE)
-
     if os.path.exists(MODEL_PATH):
         model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
-        print(f"Loaded model from {MODEL_PATH}")
     else:
-        print(f"Error: Model file not found at {MODEL_PATH}")
-        return
-
+        raise FileNotFoundError(f"Model not found at {MODEL_PATH}")
     model.eval()
 
     # 4. Prediction Loop
     results = []
     num_batches = (len(test_df) + BATCH_SIZE - 1) // BATCH_SIZE
 
-    print("Starting prediction...")
+    print(f"Starting prediction with Ensemble (Alpha={ALPHA})...")
     with torch.no_grad():
         for i in tqdm(range(num_batches), desc="Predicting"):
             start_idx = i * BATCH_SIZE
             end_idx = min((i + 1) * BATCH_SIZE, len(test_df))
             batch_df = test_df.iloc[start_idx:end_idx]
-
-            # Prepare input
-            prot_emb_list = batch_df["embedding"].tolist()
-            prot_emb = torch.tensor(np.stack(prot_emb_list), dtype=torch.float32).to(
-                DEVICE
-            )
-
-            # Forward pass
-            logits = model(prot_emb, go_embeddings_tensor)
-            probs = torch.sigmoid(logits)
-
-            # --- Consistency Enforcement (Post-processing) ---
-            # Chuyển sang CPU/Numpy để xử lý graph nhanh hơn
-            probs_np = probs.cpu().numpy()
-
-            # Propagate scores: Child -> Parent
-            # Logic: Score(Parent) = max(Score(Parent), Score(Child))
-            # Do đã sort topological, ta chỉ cần chạy 1 pass là đủ
-            for child_idx, parent_indices in propagation_steps:
-                # Lấy điểm của con cho cả batch [Batch_Size, 1]
-                child_scores = probs_np[:, child_idx : child_idx + 1]
-
-                # Lấy điểm hiện tại của các cha [Batch_Size, Num_Parents]
-                current_parent_scores = probs_np[:, parent_indices]
-
-                # Update max
-                new_parent_scores = np.maximum(current_parent_scores, child_scores)
-                probs_np[:, parent_indices] = new_parent_scores
-            # -------------------------------------------------
-
-            # Get Top-K
-            # Chuyển lại tensor để dùng topk của torch (thường nhanh hơn sort numpy)
-            probs_final = torch.from_numpy(probs_np)
-            topk_probs, topk_indices = torch.topk(probs_final, k=TOP_K, dim=1)
-
-            topk_probs = topk_probs.numpy()
-            topk_indices = topk_indices.numpy()
             batch_ids = batch_df["id"].values
+            
+            prot_emb = torch.tensor(np.stack(batch_df["embedding"].tolist())).float().to(DEVICE)
 
-            # Formatting Results
-            for j in range(len(batch_df)):
-                prot_id = batch_ids[j]
+            # DL Inference
+            logits = model(prot_emb, go_embeddings)
+            dl_probs = torch.sigmoid(logits).cpu().numpy()
+
+            # Ensemble Logic
+            final_probs = dl_probs
+            
+            if diamond_data:
+                diamond_batch = np.zeros_like(dl_probs)
+                has_diamond_info = False
+                
+                for b_idx, pid in enumerate(batch_ids):
+                    if pid in diamond_data:
+                        has_diamond_info = True
+                        for go_idx, score in diamond_data[pid].items():
+                            diamond_batch[b_idx, go_idx] = score
+                
+                if has_diamond_info:
+                    final_probs = (ALPHA * dl_probs) + ((1 - ALPHA) * diamond_batch)
+
+            # Propagation
+            for child_idx, parent_indices in propagation_steps:
+                child_scores = final_probs[:, child_idx:child_idx+1]
+                current_parents = final_probs[:, parent_indices]
+                new_parent_scores = np.maximum(current_parents, child_scores)
+                final_probs[:, parent_indices] = new_parent_scores
+
+            # Top-K
+            final_probs_t = torch.from_numpy(final_probs)
+            topk_vals, topk_inds = torch.topk(final_probs_t, k=TOP_K, dim=1)
+            
+            topk_vals = topk_vals.numpy()
+            topk_inds = topk_inds.numpy()
+
+            for j, prot_id in enumerate(batch_ids):
                 for k in range(TOP_K):
-                    go_idx = topk_indices[j, k]
-                    prob = topk_probs[j, k]
+                    prob = topk_vals[j, k]
+                    if prob > 0.001: 
+                        go_id = valid_terms_list[topk_inds[j, k]]
+                        results.append(f"{prot_id}\t{go_id}\t{prob:.3f}")
 
-                    # Chỉ lưu nếu xác suất > ngưỡng nhỏ (ví dụ 0.001) để giảm dung lượng file
-                    # CAFA thường yêu cầu > 0
-                    if prob > 0.0:
-                        go_term_id = valid_terms_list[
-                            go_idx
-                        ]  # Lookup từ list nhanh hơn iloc
-                        results.append(f"{prot_id}\t{go_term_id}\t{prob:.3f}")
-
-    # 5. Write Submission File
-    print(f"Writing results to {OUTPUT_PATH}...")
+    print(f"Writing {len(results)} predictions to {OUTPUT_PATH}...")
     with open(OUTPUT_PATH, "w") as f:
         for line in results:
             f.write(line + "\n")
-
     print("Done!")
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input", default=TEST_PATH, help="Path to test parquet file")
-    parser.add_argument(
-        "--output", default=OUTPUT_PATH, help="Path to output submission file"
-    )
-    parser.add_argument(
-        "--limit", type=int, default=TOP_K, help="Number of top predictions to keep"
-    )
+    parser.add_argument("--alpha", type=float, default=0.5, help="Weight for DL model (0.0 - 1.0)")
+    parser.add_argument("--limit", type=int, default=TOP_K, help="Top K predictions")
     args = parser.parse_args()
-
-    TEST_PATH = args.input
-    OUTPUT_PATH = args.output
+    
     TOP_K = args.limit
+    ALPHA = args.alpha
 
     predict()
