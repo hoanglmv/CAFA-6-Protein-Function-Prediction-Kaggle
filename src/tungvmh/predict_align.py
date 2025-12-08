@@ -19,7 +19,7 @@ LABEL_PATH = os.path.join(DATA_DIR, "label.parquet")
 MODEL_PATH = os.path.join(PROJECT_ROOT, "models/align_model.pth")
 OUTPUT_PATH = os.path.join(PROJECT_ROOT, "data/submission.tsv")
 BATCH_SIZE = 8
-TOP_K = 15  # Number of predictions to keep per protein
+TOP_K = 20  # Number of predictions to keep per protein
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 

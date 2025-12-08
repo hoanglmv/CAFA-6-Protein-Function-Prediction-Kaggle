@@ -22,7 +22,7 @@ class ProteinGOAligner(nn.Module):
         )
 
         # log(1/0.07)
-        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
+        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.05))
 
     def forward(self, esm_embeddings, go_embeddings):
         prot_vec = self.prot_projector(esm_embeddings)

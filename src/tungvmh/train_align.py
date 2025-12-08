@@ -21,7 +21,7 @@ LABEL_PATH = os.path.join(DATA_DIR, "label.parquet")
 MODEL_SAVE_DIR = os.path.join(PROJECT_ROOT, "models")
 MODEL_SAVE_PATH = os.path.join(MODEL_SAVE_DIR, "align_model.pth")
 BATCH_SIZE = 32
-EPOCHS = 8
+EPOCHS = 30
 LEARNING_RATE = 1e-3
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -83,7 +83,7 @@ def train():
     # Loss & Optimizer
     # ========================================
     # Added pos_weight as requested
-    pos_weight = torch.full((dataset.num_classes,), 15.0).to(DEVICE)
+    pos_weight = torch.full((dataset.num_classes,), 20.0).to(DEVICE)
     criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
     # ========================================
 
