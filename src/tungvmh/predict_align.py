@@ -23,7 +23,7 @@ OBO_PATH = os.path.join(PROJECT_ROOT, "data/Train/go-basic.obo")  # File OBO g�
 MODEL_PATH = os.path.join(PROJECT_ROOT, "models/align_model.pth")
 OUTPUT_PATH = os.path.join(PROJECT_ROOT, "data/submission.tsv")
 
-BATCH_SIZE = 32  # Tăng batch size lên chút vì inference tốn ít VRAM
+BATCH_SIZE = 1024
 TOP_K = 20
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
