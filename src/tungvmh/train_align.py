@@ -20,9 +20,9 @@ TRAIN_PATH = os.path.join(DATA_DIR, "train.parquet")
 LABEL_PATH = os.path.join(DATA_DIR, "label.parquet")
 MODEL_SAVE_DIR = os.path.join(PROJECT_ROOT, "models")
 MODEL_SAVE_PATH = os.path.join(MODEL_SAVE_DIR, "align_model.pth")
-BATCH_SIZE = 16
-EPOCHS = 10
-LEARNING_RATE = 1e-4
+BATCH_SIZE = 32
+EPOCHS = 8
+LEARNING_RATE = 3e-4
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
