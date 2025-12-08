@@ -11,14 +11,15 @@ class ProteinGOAligner(nn.Module):
         # Nhánh 1: Project Protein
         self.prot_projector = nn.Sequential(
             nn.Linear(esm_dim, 1024),
-            nn.BatchNorm1d(1024),  # Batch Norm rất quan trọng để ổn định training
+            nn.BatchNorm1d(1024),
             nn.ReLU(),
+            nn.Dropout(0.3),
             nn.Linear(1024, joint_dim),
         )
 
         # Nhánh 2: Project GO Label
         self.go_projector = nn.Sequential(
-            nn.Linear(go_emb_dim, joint_dim)
+            nn.Linear(go_emb_dim, joint_dim), nn.Dropout(0.1)
         )
 
         # log(1/0.07)
