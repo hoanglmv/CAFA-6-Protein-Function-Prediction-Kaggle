@@ -16,7 +16,7 @@ from align_embed.protein_go_aligner import ProteinGOAligner
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, "../../"))
 DATA_DIR = os.path.join(PROJECT_ROOT, "data/processed2")
-TRAIN_PATH = os.path.join(DATA_DIR, "train.parquet")
+TRAIN_PATH = os.path.join(DATA_DIR, "train_complete.parquet")
 LABEL_PATH = os.path.join(DATA_DIR, "label.parquet")
 MODEL_SAVE_DIR = os.path.join(PROJECT_ROOT, "models")
 MODEL_SAVE_PATH = os.path.join(MODEL_SAVE_DIR, "align_model.pth")
