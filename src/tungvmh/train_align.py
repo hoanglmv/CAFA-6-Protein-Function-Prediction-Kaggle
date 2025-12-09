@@ -3,7 +3,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader, random_split
-from loss_function import AsymmetricLoss
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
@@ -31,9 +30,11 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class ProteinGODataset(Dataset):
     def __init__(self, train_df, label_df):
         self.train_df = train_df
+        # Mapping này chỉ đúng khi label_df đã được SORT (xem hàm train)
         self.go_to_idx = {go_id: idx for idx, go_id in enumerate(label_df["name"])}
         self.num_classes = len(label_df)
 
+        # [OPTIMIZATION] Load toàn bộ vào RAM dưới dạng Tensor để train nhanh hơn
         print("Pre-loading training embeddings to RAM...")
         self.embeddings = torch.tensor(
             np.stack(train_df["embedding"].values), dtype=torch.float32
@@ -47,6 +48,7 @@ class ProteinGODataset(Dataset):
         prot_emb = self.embeddings[idx]
         label_vec = torch.zeros(self.num_classes, dtype=torch.float32)
 
+        # Fast multi-hot encoding
         terms = self.go_terms_list[idx]
         if terms is not None and len(terms) > 0:
             indices = [self.go_to_idx[t] for t in terms if t in self.go_to_idx]
@@ -63,6 +65,7 @@ def train():
     print("Loading data...")
     train_df = pd.read_parquet(TRAIN_PATH)
 
+    # [CRITICAL FIX] BẮT BUỘC SORT LABEL ĐỂ ĐỒNG BỘ INDEX
     print("Sorting Labels...")
     label_df = pd.read_parquet(LABEL_PATH).sort_values("name").reset_index(drop=True)
 
@@ -72,7 +75,7 @@ def train():
     # Dataset
     full_dataset = ProteinGODataset(train_df, label_df)
 
-    # Split 99/1
+    # Split 90/10
     train_size = int(0.99 * len(full_dataset))
     val_size = len(full_dataset) - train_size
     train_dataset, val_dataset = random_split(
@@ -102,50 +105,27 @@ def train():
         np.stack(label_df["embedding"].values), dtype=torch.float32
     ).to(DEVICE)
 
-    # Model (Sử dụng version mới nhất bạn đã sửa: Asymmetric, no go_projector)
-    model = ProteinGOAligner(esm_dim=2560, go_emb_dim=768).to(DEVICE)
+    model = ProteinGOAligner(esm_dim=2560, go_emb_dim=768, joint_dim=512).to(DEVICE)
 
     # Loss & Optimizer
-    # pos_weight = torch.tensor([20.0]).to(DEVICE)
-    # criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
-    criterion = AsymmetricLoss(gamma_neg=4, gamma_pos=1, clip=0.05).to(DEVICE)
+    # Pos weight giúp cân bằng class imbalanced
+    pos_weight = torch.tensor([20.0]).to(DEVICE)
+    criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
+    # AdamW tốt hơn Adam thường
     optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-4)
 
-    # --- [NEW SCHEDULER: Cosine with Warmup] ---
-    warmup_epochs = 2
-
-    # 1. Warmup: Tăng tuyến tính từ LR rất nhỏ lên LR gốc trong 2 epoch
-    warmup_scheduler = optim.lr_scheduler.LinearLR(
-        optimizer, start_factor=0.01, end_factor=1.0, total_iters=warmup_epochs
+    # Scheduler: Giảm LR khi Loss đi ngang
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode="min", factor=0.1, patience=1
     )
-
-    # 2. Cosine Decay: Giảm theo hình sin từ epoch 3 đến 100
-    cosine_scheduler = optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=(EPOCHS - warmup_epochs), eta_min=1e-6
-    )
-
-    main_scheduler = optim.lr_scheduler.LinearLR(
-        optimizer,
-        start_factor=1,
-        end_factor=0.0001,
-        total_iters=(EPOCHS - warmup_epochs),
-    )
-
-    # 3. Kết hợp tuần tự
-    scheduler = optim.lr_scheduler.SequentialLR(
-        optimizer,
-        schedulers=[warmup_scheduler, cosine_scheduler],
-        milestones=[warmup_epochs],
-    )
-    # -------------------------------------------
 
     os.makedirs(MODEL_SAVE_DIR, exist_ok=True)
     best_val_loss = float("inf")
     patience = 15
     patience_counter = 0
 
-    print("Starting training (Cosine Schedule with 2 Epochs Warmup)...")
+    print("Starting training (FP32 Mode)...")
     for epoch in range(EPOCHS):
         model.train()
         train_loss = 0
@@ -157,11 +137,15 @@ def train():
 
             optimizer.zero_grad()
 
+            # FP32 standard forward
             logits = model(prot_emb, go_embeddings_tensor)
             loss = criterion(logits, labels)
 
             loss.backward()
+
+            # Gradient Clipping: Vẫn nên dùng để tránh nổ gradient
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
             optimizer.step()
 
             train_loss += loss.item()
@@ -181,9 +165,8 @@ def train():
                 val_loss += criterion(logits, labels).item()
 
         avg_val_loss = val_loss / len(val_loader)
+        scheduler.step(avg_val_loss)  # Update LR
 
-        # [MODIFIED] Scheduler step gọi ở cuối epoch, không cần val_loss
-        scheduler.step()
         updated_lr = optimizer.param_groups[0]["lr"]
 
         print(

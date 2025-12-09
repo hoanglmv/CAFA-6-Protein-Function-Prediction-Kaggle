@@ -12,7 +12,6 @@ if PROJECT_ROOT not in sys.path:
 
 try:
     from src.encode.encode_prot import get_protein_embedding
-
     # from src.map_taxonomy.taxonomy_group import TaxonGrouper
 except ImportError as e:
     print(f"Error importing modules: {e}")
@@ -57,7 +56,7 @@ def process_dataframe(df, grouper, existing_cache=None, desc="Processing"):
             tax_id = "0"  # Handle missing taxonomy
 
         # grouper.get_one_hot expects tax_id
-        sk_vector = [0, 0, 0, 0]
+        sk_vector = [0,0,0,0]
         superkingdoms.append(sk_vector)
 
         # 2. Get Protein Embedding
