@@ -27,7 +27,7 @@ TRAIN_TERMS_PATH = os.path.join(PROJECT_ROOT, "data/Train/train_terms.tsv")
 
 # Tăng TOP_K lên 100 để tối ưu F-max
 TOP_K = 100
-BATCH_SIZE = 512
+BATCH_SIZE = 1024
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 

@@ -21,8 +21,8 @@ LABEL_PATH = os.path.join(DATA_DIR, "label.parquet")
 MODEL_SAVE_DIR = os.path.join(PROJECT_ROOT, "models")
 MODEL_SAVE_PATH = os.path.join(MODEL_SAVE_DIR, "align_model.pth")
 
-BATCH_SIZE = 512
-EPOCHS = 50
+BATCH_SIZE = 1024
+EPOCHS = 100
 LEARNING_RATE = 1e-4
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -109,7 +109,7 @@ def train():
 
     # Loss & Optimizer
     # Pos weight giúp cân bằng class imbalanced
-    pos_weight = torch.tensor([15.0]).to(DEVICE)
+    pos_weight = torch.tensor([20.0]).to(DEVICE)
     criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
     # AdamW tốt hơn Adam thường
@@ -117,12 +117,12 @@ def train():
 
     # Scheduler: Giảm LR khi Loss đi ngang
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", factor=0.5, patience=2, verbose=True
+        optimizer, mode="min", factor=0.2, patience=2
     )
 
     os.makedirs(MODEL_SAVE_DIR, exist_ok=True)
     best_val_loss = float("inf")
-    patience = 6
+    patience = 15
     patience_counter = 0
 
     print("Starting training (FP32 Mode)...")
@@ -167,8 +167,10 @@ def train():
         avg_val_loss = val_loss / len(val_loader)
         scheduler.step(avg_val_loss)  # Update LR
 
+        updated_lr = optimizer.param_groups[0]["lr"]
+
         print(
-            f"Epoch {epoch+1} | Train: {avg_train_loss:.4f} | Val: {avg_val_loss:.4f}"
+            f"Epoch {epoch+1} | Train: {avg_train_loss:.4f} | Val: {avg_val_loss:.4f} | LR: {updated_lr:.2e}"
         )
 
         if avg_val_loss < best_val_loss:
