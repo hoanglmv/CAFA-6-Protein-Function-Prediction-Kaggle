@@ -20,8 +20,9 @@ TRAIN_PATH = os.path.join(DATA_DIR, "train.parquet")
 LABEL_PATH = os.path.join(DATA_DIR, "label.parquet")
 MODEL_SAVE_DIR = os.path.join(PROJECT_ROOT, "models")
 MODEL_SAVE_PATH = os.path.join(MODEL_SAVE_DIR, "align_model.pth")
+
 BATCH_SIZE = 512
-EPOCHS = 80
+EPOCHS = 50
 LEARNING_RATE = 1e-4
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -29,29 +30,30 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class ProteinGODataset(Dataset):
     def __init__(self, train_df, label_df):
         self.train_df = train_df
-        self.label_df = label_df
-
-        # Create mapping from GO ID to index
+        # Mapping này chỉ đúng khi label_df đã được SORT (xem hàm train)
         self.go_to_idx = {go_id: idx for idx, go_id in enumerate(label_df["name"])}
         self.num_classes = len(label_df)
+
+        # [OPTIMIZATION] Load toàn bộ vào RAM dưới dạng Tensor để train nhanh hơn
+        print("Pre-loading training embeddings to RAM...")
+        self.embeddings = torch.tensor(
+            np.stack(train_df["embedding"].values), dtype=torch.float32
+        )
+        self.go_terms_list = train_df["go_terms"].values
 
     def __len__(self):
         return len(self.train_df)
 
     def __getitem__(self, idx):
-        row = self.train_df.iloc[idx]
-
-        # Protein Embedding
-        prot_emb = torch.tensor(row["embedding"], dtype=torch.float32)
-
-        # Multi-hot label vector
+        prot_emb = self.embeddings[idx]
         label_vec = torch.zeros(self.num_classes, dtype=torch.float32)
 
-        go_terms = row["go_terms"]
-        if go_terms is not None and isinstance(go_terms, (list, np.ndarray)):
-            for go_id in go_terms:
-                if go_id in self.go_to_idx:
-                    label_vec[self.go_to_idx[go_id]] = 1.0
+        # Fast multi-hot encoding
+        terms = self.go_terms_list[idx]
+        if terms is not None and len(terms) > 0:
+            indices = [self.go_to_idx[t] for t in terms if t in self.go_to_idx]
+            if indices:
+                label_vec[indices] = 1.0
 
         return prot_emb, label_vec
 
@@ -62,7 +64,10 @@ def train():
     # Load data
     print("Loading data...")
     train_df = pd.read_parquet(TRAIN_PATH)
-    label_df = pd.read_parquet(LABEL_PATH)
+
+    # [CRITICAL FIX] BẮT BUỘC SORT LABEL ĐỂ ĐỒNG BỘ INDEX
+    print("Sorting Labels...")
+    label_df = pd.read_parquet(LABEL_PATH).sort_values("name").reset_index(drop=True)
 
     print(f"Total samples: {len(train_df)}")
     print(f"Total GO terms: {len(label_df)}")
@@ -73,10 +78,11 @@ def train():
     # Split 90/10
     train_size = int(0.9 * len(full_dataset))
     val_size = len(full_dataset) - train_size
-    train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
-
-    print(f"Train size: {len(train_dataset)}")
-    print(f"Val size: {len(val_dataset)}")
+    train_dataset, val_dataset = random_split(
+        full_dataset,
+        [train_size, val_size],
+        generator=torch.Generator().manual_seed(42),
+    )
 
     # DataLoaders
     train_loader = DataLoader(
@@ -95,49 +101,51 @@ def train():
     )
 
     # Prepare GO embeddings
-    print("Preparing GO embeddings...")
-    go_embeddings_list = label_df["embedding"].tolist()
     go_embeddings_tensor = torch.tensor(
-        np.array(go_embeddings_list), dtype=torch.float32
+        np.stack(label_df["embedding"].values), dtype=torch.float32
     ).to(DEVICE)
 
     model = ProteinGOAligner(esm_dim=2560, go_emb_dim=768, joint_dim=512).to(DEVICE)
 
     # Loss & Optimizer
-    # ========================================
-    pos_weight = torch.full((full_dataset.num_classes,), 20.0).to(DEVICE)
+    # Pos weight giúp cân bằng class imbalanced
+    pos_weight = torch.tensor([15.0]).to(DEVICE)
     criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
-    # ========================================
 
-    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    # AdamW tốt hơn Adam thường
+    optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-4)
 
-    # Scheduler
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
+    # Scheduler: Giảm LR khi Loss đi ngang
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode="min", factor=0.5, patience=2, verbose=True
+    )
 
-    # Training Loop
     os.makedirs(MODEL_SAVE_DIR, exist_ok=True)
-
     best_val_loss = float("inf")
-    patience = 5
+    patience = 6
     patience_counter = 0
 
-    print("Starting training...")
+    print("Starting training (FP32 Mode)...")
     for epoch in range(EPOCHS):
-        # --- Training ---
         model.train()
         train_loss = 0
 
-        progress_bar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{EPOCHS} [Train]")
+        progress_bar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{EPOCHS}")
         for prot_emb, labels in progress_bar:
-            prot_emb = prot_emb.to(DEVICE)
-            labels = labels.to(DEVICE)
+            prot_emb = prot_emb.to(DEVICE, non_blocking=True)
+            labels = labels.to(DEVICE, non_blocking=True)
 
             optimizer.zero_grad()
 
+            # FP32 standard forward
             logits = model(prot_emb, go_embeddings_tensor)
             loss = criterion(logits, labels)
 
             loss.backward()
+
+            # Gradient Clipping: Vẫn nên dùng để tránh nổ gradient
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
             optimizer.step()
 
             train_loss += loss.item()
@@ -145,7 +153,7 @@ def train():
 
         avg_train_loss = train_loss / len(train_loader)
 
-        # --- Validation ---
+        # Validation
         model.eval()
         val_loss = 0
         with torch.no_grad():
@@ -154,47 +162,26 @@ def train():
                 labels = labels.to(DEVICE)
 
                 logits = model(prot_emb, go_embeddings_tensor)
-                loss = criterion(logits, labels)
-                val_loss += loss.item()
+                val_loss += criterion(logits, labels).item()
 
         avg_val_loss = val_loss / len(val_loader)
-
-        # Update Scheduler
-        scheduler.step()
-        current_lr = scheduler.get_last_lr()[0]
+        scheduler.step(avg_val_loss)  # Update LR
 
         print(
-            f"Epoch {epoch+1} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | LR: {current_lr:.6f}"
+            f"Epoch {epoch+1} | Train: {avg_train_loss:.4f} | Val: {avg_val_loss:.4f}"
         )
 
-        # --- Early Stopping & Checkpointing ---
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
             patience_counter = 0
             torch.save(model.state_dict(), MODEL_SAVE_PATH)
-            print(f"Validation loss improved. Model saved to {MODEL_SAVE_PATH}")
+            print("Saved Best Model")
         else:
             patience_counter += 1
-            print(
-                f"Validation loss did not improve. Patience: {patience_counter}/{patience}"
-            )
-
             if patience_counter >= patience:
                 print("Early stopping triggered.")
                 break
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--dry-run", action="store_true", help="Run a short training loop for testing"
-    )
-    args = parser.parse_args()
-
-    if args.dry_run:
-        print("Dry run mode enabled. Reducing epochs.")
-        EPOCHS = 1
-
     train()

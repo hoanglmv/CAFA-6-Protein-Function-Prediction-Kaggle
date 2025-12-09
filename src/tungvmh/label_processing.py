@@ -23,15 +23,13 @@ def main():
     print(f"Loading vocabulary from {vocab_path}...")
     mapper = GOTermMapper(vocab_path)
     vocab_terms = mapper.get_all_terms()
-    print(f"Loaded {len(vocab_terms)} terms from vocabulary.")
 
     # Load GO ontology
     print(f"Loading GO ontology from {obo_path}...")
     graph = obonet.read_obo(obo_path)
-    print(f"Loaded ontology with {len(graph)} terms.")
 
     # Extract definitions
-    print("Extracting definitions...")
+    print("Extracting rich definitions...")
     ids = []
     names = []
     definitions = []
@@ -40,52 +38,37 @@ def main():
         ids.append(idx)
         names.append(term)
 
+        # [SOTA IMPROVEMENT] Tạo ngữ cảnh đầy đủ: "NAME: DEFINITION"
+        text_content = term  # Mặc định
+
         if term in graph:
             node = graph.nodes[term]
-            if "def" in node:
-                print("Definition found for term:", term)
-                def_str = node["def"]
-                if def_str.startswith('"'):
-                    def_text = def_str.split('"')[1]
-                else:
-                    def_text = def_str
-                definitions.append(def_text)
-            elif "name" in node:
-                print("Name found for term:", term)
-                definitions.append(node["name"])
-            else:
-                print("No definition or name found for term:", term)
-                definitions.append(term)  # Fallback to ID if nothing else
-        else:
-            print(
-                f"Warning: Term {term} not found in ontology. Using term ID as definition."
-            )
-            definitions.append(term)
+            name_str = node.get("name", "")
+            def_str = node.get("def", "")
 
-    # Embed definitions
-    print(f"Embedding {len(definitions)} definitions...")
-    # Use batch_size=1 and show_progress_bar=True as requested/planned
-    embeddings = embed_labels(definitions, batch_size=1, show_progress_bar=True)
-    print(f"Embeddings shape: {embeddings.shape}")
+            # Làm sạch chuỗi definition
+            if def_str.startswith('"'):
+                def_str = def_str.split('"')[1]
+
+            # Kết hợp
+            if name_str and def_str:
+                text_content = f"{name_str}: {def_str}"
+            elif name_str:
+                text_content = name_str
+            elif def_str:
+                text_content = def_str
+
+        definitions.append(text_content)
+
+    print(f"Embedding {len(definitions)} terms...")
+    embeddings = embed_labels(definitions, batch_size=32, show_progress_bar=True)
 
     # Create DataFrame
-    print("Creating DataFrame...")
-    # Convert embeddings to list of arrays for DataFrame storage if needed,
-    # but parquet handles numpy arrays well if we are careful.
-    # The user requested specific columns: id, name, embedding (np array 768)
-
-    # To store numpy arrays in a parquet column, we can keep them as objects or lists.
-    # Let's verify what works best. Usually list of lists or just numpy array column.
-    # However, a column of numpy arrays is often stored as a list of floats in parquet.
-    # Let's try storing as list of floats to be safe and compatible.
-    # Wait, user said "embedding (np array 768)".
-    # If I save as parquet, it will likely be read back as numpy array if I use pyarrow.
-
     df = pd.DataFrame(
         {
             "id": ids,
             "name": names,
-            "embedding": list(embeddings),  # Store as list of arrays
+            "embedding": list(embeddings),
         }
     )
 
