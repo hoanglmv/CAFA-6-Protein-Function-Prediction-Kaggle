@@ -42,6 +42,7 @@ diamond blastp \
     --db data/Train/train_db.dmnd \
     --query data/Test/testsuperset.fasta \
     --out data/processed2/diamond_matches.tsv \
+    --very-sensitive \
     --outfmt 6 \
     --max-target-seqs 1
 ```

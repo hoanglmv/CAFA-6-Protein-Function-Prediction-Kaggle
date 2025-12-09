@@ -1,28 +1,29 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np  # Cần import thêm numpy
+import numpy as np
 
 
 class ProteinGOAligner(nn.Module):
     def __init__(self, esm_dim=2560, go_emb_dim=768, joint_dim=512):
         super().__init__()
 
-        # Nhánh 1: Project Protein
+        # --- NHÁNH 1: PROTEIN (Sửa: Bỏ Dropout, giữ BatchNorm) ---
         self.prot_projector = nn.Sequential(
             nn.Linear(esm_dim, 1024),
             nn.BatchNorm1d(1024),
             nn.ReLU(),
-            nn.Dropout(0.3),
             nn.Linear(1024, joint_dim),
         )
 
-        # Nhánh 2: Project GO Label
+        # --- NHÁNH 2: GO LABEL  ---
         self.go_projector = nn.Sequential(
-            nn.Linear(go_emb_dim, joint_dim), nn.Dropout(0.1)
+            nn.Linear(go_emb_dim, 1024),
+            nn.BatchNorm1d(1024),
+            nn.ReLU(),
+            nn.Linear(1024, joint_dim),
         )
 
-        # log(1/0.07)
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.05))
 
     def forward(self, esm_embeddings, go_embeddings):

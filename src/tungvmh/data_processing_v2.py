@@ -26,16 +26,29 @@ PROCESSED_DIR = os.path.join(DATA_DIR, "processed")
 PROCESSED2_DIR = os.path.join(DATA_DIR, "processed2")
 
 
-def process_dataframe(df, grouper, desc="Processing"):
+def process_dataframe(df, grouper, existing_cache=None, desc="Processing"):
     """
     Process a dataframe: add superkingdom and embedding columns.
+    If existing_cache is provided (dict of id -> {embedding, superkingdom}),
+    use it to avoid recomputing.
     """
     # Lists to store new columns
     superkingdoms = []
     embeddings = []
 
+    existing_cache = existing_cache or {}
+
     # Iterate with tqdm
     for index, row in tqdm(df.iterrows(), total=len(df), desc=desc):
+        pid = row.get("id")
+
+        # Check cache first
+        if pid in existing_cache:
+            cached = existing_cache[pid]
+            superkingdoms.append(cached["superkingdom"])
+            embeddings.append(cached["embedding"])
+            continue
+
         # 1. Get Superkingdom One-Hot Vector
         # Ensure taxonomy is a string or int as expected by grouper
         tax_id = row.get("taxonomy")
@@ -49,20 +62,15 @@ def process_dataframe(df, grouper, desc="Processing"):
         # 2. Get Protein Embedding
         seq = row.get("seq", "")
         if not seq:
-            # Handle empty sequence if necessary, though unlikely in this dataset
-            # Embedding dim depends on model, assume it handles empty or we skip
-            # For safety, let's pass it, but usually we expect valid seq
-            emb_vector = np.zeros(
-                2560
-            )  # Placeholder if needed, but better to let model handle or error
-            # Actually get_protein_embedding might fail on empty string, let's try
+            # Handle empty sequence
+            emb_vector = np.zeros(2560)
             pass
 
         try:
             emb_vector = get_protein_embedding(seq)
         except Exception as e:
-            print(f"Error encoding sequence for ID {row.get('id')}: {e}")
-            emb_vector = None  # Or some default
+            print(f"Error encoding sequence for ID {pid}: {e}")
+            emb_vector = None
 
         embeddings.append(emb_vector)
 
@@ -90,11 +98,35 @@ def main():
         print(f"\nLoading train data from {train_input}...")
         df_train = pd.read_parquet(train_input)
 
-        # Optional: Process a subset for testing if needed
-        # df_train = df_train.head(100)
+        existing_cache = {}
+        # Check for existing processed data to reuse embeddings
+        if os.path.exists(train_output):
+            print(
+                f"Found existing output at {train_output}. Loading embeddings to reuse..."
+            )
+            try:
+                df_existing = pd.read_parquet(train_output)
+                # Create cache: id -> {embedding, superkingdom}
+                # We iterate to build the dict.
+                for _, row in tqdm(
+                    df_existing.iterrows(),
+                    total=len(df_existing),
+                    desc="Building Cache",
+                ):
+                    existing_cache[row["id"]] = {
+                        "embedding": row["embedding"],
+                        "superkingdom": row["superkingdom"],
+                    }
+                print(f"Loaded {len(existing_cache)} existing embeddings.")
+            except Exception as e:
+                print(
+                    f"Error reading existing file: {e}. Will recompute all embeddings."
+                )
 
-        print("Processing train data...")
-        df_train_processed = process_dataframe(df_train, grouper, desc="Train Data")
+        print("Processing train data (merging with existing embeddings)...")
+        df_train_processed = process_dataframe(
+            df_train, grouper, existing_cache=existing_cache, desc="Train Data"
+        )
 
         print(f"Saving processed train data to {train_output}...")
         df_train_processed.to_parquet(train_output, index=False)
@@ -105,15 +137,18 @@ def main():
     test_input = os.path.join(PROCESSED_DIR, "test.parquet")
     test_output = os.path.join(PROCESSED2_DIR, "test.parquet")
 
-    if os.path.exists(test_input):
+    if os.path.exists(test_output):
+        print(
+            f"Test output already exists at {test_output}. Skipping processing as it has no labels."
+        )
+    elif os.path.exists(test_input):
         print(f"\nLoading test data from {test_input}...")
         df_test = pd.read_parquet(test_input)
 
-        # Optional: Process a subset for testing
-        # df_test = df_test.head(100)
-
         print("Processing test data...")
-        df_test_processed = process_dataframe(df_test, grouper, desc="Test Data")
+        df_test_processed = process_dataframe(
+            df_test, grouper, existing_cache=None, desc="Test Data"
+        )
 
         print(f"Saving processed test data to {test_output}...")
         df_test_processed.to_parquet(test_output, index=False)

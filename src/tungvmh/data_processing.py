@@ -11,7 +11,7 @@ from collections import defaultdict, Counter
 CONFIG = {
     # Set to None to use all terms, or set to a number (e.g., 1000, 5000)
     # to use only the top N most frequent terms
-    "top_n_terms": 20000,  # None = all terms, or int like 1000, 5000, 10000
+    "top_n_terms": None,  # None = all terms, or int like 1000, 5000, 10000
     # Minimum term frnhanequency (optional filter)
     "min_term_frequency": 1,  # Only keep terms that appear at least this many times
 }
