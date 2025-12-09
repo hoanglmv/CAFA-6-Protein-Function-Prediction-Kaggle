@@ -137,7 +137,7 @@ def predict(alpha=0.5):
     go_embeddings = (
         torch.tensor(np.stack(label_df["embedding"].tolist())).float().to(DEVICE)
     )
-    model = ProteinGOAligner(esm_dim=2560, go_emb_dim=768, joint_dim=512).to(DEVICE)
+    model = ProteinGOAligner(esm_dim=2560, go_emb_dim=768).to(DEVICE)
     model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
     model.eval()
 
@@ -195,7 +195,7 @@ def predict(alpha=0.5):
             for j, prot_id in enumerate(batch_ids):
                 for k in range(TOP_K):
                     prob = topk_vals[j, k]
-                    if prob > 0.001:
+                    if prob > 0.0001:
                         go_id = valid_terms_list[topk_inds[j, k]]
                         results.append(f"{prot_id}\t{go_id}\t{prob:.3f}")
 
