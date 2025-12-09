@@ -17,6 +17,8 @@ class ProteinGOAligner(nn.Module):
             nn.Linear(1024, go_emb_dim),  # Output ra đúng 768 (bằng dim của GO)
         )
 
+        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
+
     def forward(self, esm_embeddings, go_embeddings):
         """
         esm_embeddings: [Batch_Size, 2560]
@@ -30,10 +32,14 @@ class ProteinGOAligner(nn.Module):
         go_vec = go_embeddings  # -> [Num_Labels, 768]
 
         # 3. Normalize (Bắt buộc cho Cosine)
-        # prot_vec = F.normalize(prot_vec, p=2, dim=1)
-        # go_vec = F.normalize(go_vec, p=2, dim=1)
+        prot_vec = F.normalize(prot_vec, p=2, dim=1)
+        go_vec = F.normalize(go_vec, p=2, dim=1)
 
-        # 4. Tính Dot product
-        logits = torch.matmul(prot_vec, go_vec.T)
+        # 4. Tính Similarity
+        cosine_sim = torch.matmul(prot_vec, go_vec.T)
+
+        # 5. Scale logits
+        logit_scale = self.logit_scale.exp().clamp(max=50)
+        logits = cosine_sim * logit_scale
 
         return logits

@@ -137,7 +137,7 @@ def predict(alpha=0.5):
     go_embeddings = (
         torch.tensor(np.stack(label_df["embedding"].tolist())).float().to(DEVICE)
     )
-    model = ProteinGOAligner(esm_dim=2560, go_emb_dim=768, joint_dim=512).to(DEVICE)
+    model = ProteinGOAligner(esm_dim=2560, go_emb_dim=768).to(DEVICE)
     model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
     model.eval()
 
