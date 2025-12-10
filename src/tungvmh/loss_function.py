@@ -7,8 +7,8 @@ class AsymmetricLoss(nn.Module):
     """
     Asymmetric Loss (ASL) cho bài toán multi-label classification
     Đặc biệt phù hợp với CAFA protein function prediction (long-tailed distribution)
-
     Paper: "Asymmetric Loss For Multi-Label Classification"
+    
     https://arxiv.org/abs/2009.14119
 
     Args:
