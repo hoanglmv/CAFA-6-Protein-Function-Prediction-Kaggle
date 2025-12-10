@@ -8,6 +8,7 @@ import pandas as pd
 import numpy as np
 from tqdm import tqdm
 import sys
+import pickle
 
 # Add src to path to import model
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../src")))
@@ -17,8 +18,12 @@ from align_embed.protein_go_aligner import ProteinGOAligner
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, "../../"))
 DATA_DIR = os.path.join(PROJECT_ROOT, "data/processed2")
+PROCESSED_DIR = os.path.join(PROJECT_ROOT, "data/processed")
+
 TRAIN_PATH = os.path.join(DATA_DIR, "train_complete.parquet")
 LABEL_PATH = os.path.join(DATA_DIR, "label.parquet")
+VOCAB_PATH = os.path.join(PROCESSED_DIR, "vocab.pkl")
+
 MODEL_SAVE_DIR = os.path.join(PROJECT_ROOT, "models")
 MODEL_SAVE_PATH = os.path.join(MODEL_SAVE_DIR, "align_model.pth")
 
@@ -29,16 +34,17 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class ProteinGODataset(Dataset):
-    def __init__(self, train_df, label_df):
+    def __init__(self, train_df, global_to_local_map, num_classes):
         self.train_df = train_df
-        self.go_to_idx = {go_id: idx for idx, go_id in enumerate(label_df["name"])}
-        self.num_classes = len(label_df)
+        self.global_to_local_map = global_to_local_map
+        self.num_classes = num_classes
 
         print("Pre-loading training embeddings to RAM...")
         self.embeddings = torch.tensor(
             np.stack(train_df["embedding"].values), dtype=torch.float32
         )
-        self.go_terms_list = train_df["go_terms"].values
+        # go_terms_id trong train_df là GLOBAL INDICES
+        self.go_terms_id_list = train_df["go_terms_id"].values
 
     def __len__(self):
         return len(self.train_df)
@@ -47,11 +53,16 @@ class ProteinGODataset(Dataset):
         prot_emb = self.embeddings[idx]
         label_vec = torch.zeros(self.num_classes, dtype=torch.float32)
 
-        terms = self.go_terms_list[idx]
-        if terms is not None and len(terms) > 0:
-            indices = [self.go_to_idx[t] for t in terms if t in self.go_to_idx]
-            if indices:
-                label_vec[indices] = 1.0
+        global_ids = self.go_terms_id_list[idx]
+        if global_ids is not None and len(global_ids) > 0:
+            # Map Global ID -> Local ID (0-9999)
+            local_indices = [
+                self.global_to_local_map[gid]
+                for gid in global_ids
+                if gid in self.global_to_local_map
+            ]
+            if local_indices:
+                label_vec[local_indices] = 1.0
 
         return prot_emb, label_vec
 
@@ -59,18 +70,62 @@ class ProteinGODataset(Dataset):
 def train():
     print(f"Using device: {DEVICE}")
 
-    # Load data
-    print("Loading data...")
+    # 1. Load Vocab & Create Mappings
+    print(f"Loading vocab from {VOCAB_PATH}...")
+    with open(VOCAB_PATH, "rb") as f:
+        vocab_data = pickle.load(f)
+
+    top_10k_terms = vocab_data["top_10k_terms"]
+    all_term_to_idx = vocab_data["all_term_to_idx"]  # Global Mapping: Term -> Global ID
+
+    # Tạo mapping: Global ID -> Local ID (0-9999)
+    # Local ID tương ứng với thứ tự trong top_10k_terms
+    global_to_local_map = {}
+    for local_idx, term in enumerate(top_10k_terms):
+        if term in all_term_to_idx:
+            global_idx = all_term_to_idx[term]
+            global_to_local_map[global_idx] = local_idx
+
+    print(f"Created mapping for {len(global_to_local_map)} terms.")
+
+    # 2. Load Label Embeddings (All 40k)
+    print(f"Loading label embeddings from {LABEL_PATH}...")
+    label_df = pd.read_parquet(LABEL_PATH)
+    # label_df có cột 'id' là Global ID, 'embedding'
+
+    # Tạo dict: Global ID -> Embedding
+    global_id_to_emb = {}
+    for _, row in label_df.iterrows():
+        global_id_to_emb[row["id"]] = row["embedding"]
+
+    # Build tensor (10000, 768)
+    train_go_embeddings = []
+    missing_count = 0
+    for term in top_10k_terms:
+        global_idx = all_term_to_idx.get(term)
+        emb = global_id_to_emb.get(global_idx)
+        if emb is None:
+            emb = np.zeros(768)  # Should not happen
+            missing_count += 1
+        train_go_embeddings.append(emb)
+
+    if missing_count > 0:
+        print(f"WARNING: Missing embeddings for {missing_count} terms.")
+
+    go_embeddings_tensor = torch.tensor(
+        np.stack(train_go_embeddings), dtype=torch.float32
+    ).to(DEVICE)
+    print(f"Training GO Embeddings Shape: {go_embeddings_tensor.shape}")
+
+    # 3. Load Training Data
+    print("Loading training data...")
     train_df = pd.read_parquet(TRAIN_PATH)
-
-    print("Sorting Labels...")
-    label_df = pd.read_parquet(LABEL_PATH).sort_values("name").reset_index(drop=True)
-
     print(f"Total samples: {len(train_df)}")
-    print(f"Total GO terms: {len(label_df)}")
 
     # Dataset
-    full_dataset = ProteinGODataset(train_df, label_df)
+    full_dataset = ProteinGODataset(
+        train_df, global_to_local_map, num_classes=len(top_10k_terms)
+    )
 
     # Split 99/1
     train_size = int(0.99 * len(full_dataset))
@@ -97,11 +152,6 @@ def train():
         pin_memory=True,
     )
 
-    # Prepare GO embeddings
-    go_embeddings_tensor = torch.tensor(
-        np.stack(label_df["embedding"].values), dtype=torch.float32
-    ).to(DEVICE)
-
     # Model (Sử dụng version mới nhất bạn đã sửa: Asymmetric, no go_projector)
     model = ProteinGOAligner(esm_dim=2560, go_emb_dim=768).to(DEVICE)
 
@@ -125,13 +175,6 @@ def train():
         optimizer, T_max=(EPOCHS - warmup_epochs), eta_min=1e-6
     )
 
-    main_scheduler = optim.lr_scheduler.LinearLR(
-        optimizer,
-        start_factor=1,
-        end_factor=0.0001,
-        total_iters=(EPOCHS - warmup_epochs),
-    )
-
     # 3. Kết hợp tuần tự
     scheduler = optim.lr_scheduler.SequentialLR(
         optimizer,
@@ -145,7 +188,7 @@ def train():
     patience = 15
     patience_counter = 0
 
-    print("Starting training (Cosine Schedule with 2 Epochs Warmup)...")
+    print("Starting training...")
     for epoch in range(EPOCHS):
         model.train()
         train_loss = 0

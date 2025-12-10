@@ -21,8 +21,16 @@ def main():
 
     # Load vocabulary
     print(f"Loading vocabulary from {vocab_path}...")
-    mapper = GOTermMapper(vocab_path)
-    vocab_terms = mapper.get_all_terms()
+    with open(vocab_path, "rb") as f:
+        vocab_data = pickle.load(f)
+
+    # Lấy danh sách toàn bộ 40k terms
+    all_obo_terms = vocab_data.get("all_obo_terms", [])
+    if not all_obo_terms:
+        print("Error: 'all_obo_terms' not found in vocab.pkl")
+        return
+
+    print(f"Total terms to embed: {len(all_obo_terms)}")
 
     # Load GO ontology
     print(f"Loading GO ontology from {obo_path}...")
@@ -34,9 +42,9 @@ def main():
     names = []
     definitions = []
 
-    for idx, term in enumerate(tqdm(vocab_terms)):
-        ids.append(idx)
-        names.append(term)
+    for idx, term in enumerate(tqdm(all_obo_terms)):
+        ids.append(idx)  # Global Index (0-39999)
+        names.append(term)  # GO ID (GO:xxxxxxx)
 
         # [SOTA IMPROVEMENT] Tạo ngữ cảnh đầy đủ: "NAME: DEFINITION"
         text_content = term  # Mặc định
@@ -58,16 +66,18 @@ def main():
             elif def_str:
                 text_content = def_str
 
+        # Fallback nếu không tìm thấy trong graph (hiếm)
         definitions.append(text_content)
 
     print(f"Embedding {len(definitions)} terms...")
-    embeddings = embed_labels(definitions, batch_size=32, show_progress_bar=True)
+    # Batch size lớn hơn chút để nhanh hơn nếu GPU cho phép
+    embeddings = embed_labels(definitions, batch_size=64, show_progress_bar=True)
 
     # Create DataFrame
     df = pd.DataFrame(
         {
-            "id": ids,
-            "name": names,
+            "id": ids,  # Index trong full vocab (0-39999)
+            "name": names,  # GO ID (GO:xxxxxxx)
             "embedding": list(embeddings),
         }
     )

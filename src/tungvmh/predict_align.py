@@ -7,6 +7,7 @@ import torch
 import networkx as nx
 import obonet
 from tqdm import tqdm
+import pickle
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../src")))
 from align_embed.protein_go_aligner import ProteinGOAligner
@@ -15,9 +16,11 @@ from align_embed.protein_go_aligner import ProteinGOAligner
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, "../../"))
 DATA_DIR = os.path.join(PROJECT_ROOT, "data/processed2")
+PROCESSED_DIR = os.path.join(PROJECT_ROOT, "data/processed")
 
 TEST_PATH = os.path.join(DATA_DIR, "test.parquet")
 LABEL_PATH = os.path.join(DATA_DIR, "label.parquet")
+VOCAB_PATH = os.path.join(PROCESSED_DIR, "vocab.pkl")
 OBO_PATH = os.path.join(PROJECT_ROOT, "data/Train/go-basic.obo")
 MODEL_PATH = os.path.join(PROJECT_ROOT, "models/align_model.pth")
 OUTPUT_PATH = os.path.join(PROJECT_ROOT, "data/submission.tsv")
@@ -119,24 +122,45 @@ def load_and_process_diamond(diamond_file, train_terms_file, test_ids, term_to_i
 def predict(alpha=0.5):
     print(f"Using device: {DEVICE}")
 
-    test_df = pd.read_parquet(TEST_PATH)
-    # Sort label giống hệt lúc train
-    label_df = pd.read_parquet(LABEL_PATH).sort_values("name").reset_index(drop=True)
+    # 1. Load Vocab & Mappings
+    print(f"Loading vocab from {VOCAB_PATH}...")
+    with open(VOCAB_PATH, "rb") as f:
+        vocab_data = pickle.load(f)
 
-    valid_terms_list = label_df["name"].tolist()
-    term_to_idx = {term: idx for idx, term in enumerate(valid_terms_list)}
+    all_obo_terms = vocab_data["all_obo_terms"]
+    all_term_to_idx = vocab_data["all_term_to_idx"]  # Global Mapping
 
-    propagation_steps = get_propagation_steps(OBO_PATH, term_to_idx)
+    # 2. Load Label Embeddings (Full 40k)
+    print(f"Loading label embeddings from {LABEL_PATH}...")
+    label_df = pd.read_parquet(LABEL_PATH)
 
-    # Load Diamond
-    diamond_data = load_and_process_diamond(
-        DIAMOND_RAW_PATH, TRAIN_TERMS_PATH, test_df["id"].values, term_to_idx
-    )
+    # Sắp xếp label_df theo ID (Global ID) để đảm bảo tensor khớp với all_term_to_idx
+    # label_df['id'] là Global ID
+    label_df = label_df.sort_values("id").reset_index(drop=True)
 
-    # Load Model
+    # Verify alignment
+    if len(label_df) != len(all_obo_terms):
+        print(
+            f"WARNING: Label DF size {len(label_df)} != Vocab size {len(all_obo_terms)}"
+        )
+
     go_embeddings = (
         torch.tensor(np.stack(label_df["embedding"].tolist())).float().to(DEVICE)
     )
+    print(f"Prediction GO Embeddings Shape: {go_embeddings.shape}")
+
+    # 3. Load Test Data
+    test_df = pd.read_parquet(TEST_PATH)
+
+    # 4. Propagation Steps (Full Graph)
+    propagation_steps = get_propagation_steps(OBO_PATH, all_term_to_idx)
+
+    # 5. Load Diamond
+    diamond_data = load_and_process_diamond(
+        DIAMOND_RAW_PATH, TRAIN_TERMS_PATH, test_df["id"].values, all_term_to_idx
+    )
+
+    # 6. Load Model
     model = ProteinGOAligner(esm_dim=2560, go_emb_dim=768).to(DEVICE)
     model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
     model.eval()
@@ -196,7 +220,8 @@ def predict(alpha=0.5):
                 for k in range(TOP_K):
                     prob = topk_vals[j, k]
                     if prob > 0.0001:
-                        go_id = valid_terms_list[topk_inds[j, k]]
+                        # Map Global Index -> GO ID
+                        go_id = all_obo_terms[topk_inds[j, k]]
                         results.append(f"{prot_id}\t{go_id}\t{prob:.3f}")
 
     print(f"Writing results...")
