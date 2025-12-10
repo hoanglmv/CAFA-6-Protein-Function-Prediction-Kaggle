@@ -7,6 +7,7 @@ sentences = [
     "It's so sunny outside!",
     "He drove to the stadium.",
 ]
+
 embeddings = model.encode(sentences)
 
 similarities = model.similarity(embeddings, embeddings)
