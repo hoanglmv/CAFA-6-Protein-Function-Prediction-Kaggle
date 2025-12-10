@@ -7,6 +7,8 @@ import torch
 _model = None
 
 
+
+
 def embed_labels(
     texts: List[str], batch_size: int = 1, show_progress_bar: bool = True
 ) -> np.ndarray:
