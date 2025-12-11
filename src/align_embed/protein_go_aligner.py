@@ -5,41 +5,68 @@ import numpy as np
 
 
 class ProteinGOAligner(nn.Module):
-    def __init__(self, esm_dim=2560, go_emb_dim=768):
+    def __init__(self, esm_dim=2564, go_emb_dim=768, joint_dim=512):
         super().__init__()
-        self.prot_projector = nn.Sequential(
-            nn.Linear(esm_dim, 2048),  # Giữ chiều lớn để không mất tin
-            nn.BatchNorm1d(2048),
+
+        # esm_dim=2564 (2560 ESM + 4 Tax)
+        self.prot_input_dim = esm_dim - 4  # 2560
+        self.tax_dim = 4
+
+        # ==================== 1. SOFT TAXONOMY ROUTER ====================
+        self.tax_router = nn.Sequential(
+            nn.Linear(self.tax_dim, 256),
+            nn.BatchNorm1d(256),
             nn.ReLU(),
-            nn.Linear(2048, 1024),
-            nn.BatchNorm1d(1024),
-            nn.ReLU(),
-            nn.Linear(1024, go_emb_dim),  # Output ra đúng 768 (bằng dim của GO)
+            nn.Linear(256, 1024),
+            nn.Sigmoid(),
         )
 
-        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
+        # ==================== 2. PROTEIN ENCODER ====================
+        self.prot_fc1 = nn.Linear(self.prot_input_dim, 1024)
+        self.prot_bn1 = nn.BatchNorm1d(1024)
+        self.prot_fc2 = nn.Linear(1024, joint_dim)
 
-    def forward(self, esm_embeddings, go_embeddings):
+        # ==================== 3. GO TERM ENCODER ====================
+        self.go_projector = nn.Sequential(
+            nn.Linear(go_emb_dim, 1024),
+            nn.LayerNorm(1024),
+            nn.GELU(),
+            nn.Linear(1024, joint_dim),
+        )
+
+        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(14))
+
+    def forward(self, prot_features, go_embeddings):
         """
-        esm_embeddings: [Batch_Size, 2560]
-        go_embeddings:  [Num_GO_Terms, 768] (hoặc Batch_GO, 768)
+        prot_features: [Batch, 2564]
         """
 
-        # 1. Project Protein về không gian 768
-        prot_vec = self.prot_projector(esm_embeddings)  # -> [Batch, 768]
+        # 1. Tách Input
+        esm_emb = prot_features[:, :-4]  # [Batch, 2560]
+        tax_vec = prot_features[:, -4:]  # [Batch, 4]
 
-        # 2. GO Vector giữ nguyên (Chỉ chuẩn hóa)
-        go_vec = go_embeddings  # -> [Num_Labels, 768]
+        # BƯỚC 1: Tính Feature Protein Gốc
+        prot_h = self.prot_fc1(esm_emb)  # [Batch, 1024]
+        prot_h = self.prot_bn1(prot_h)
+        prot_h = F.gelu(prot_h)
 
-        # 3. Normalize (Bắt buộc cho Cosine)
+        # BƯỚC 2: Tính Soft Gate từ Taxonomy
+        gate = self.tax_router(tax_vec)
+
+        # BƯỚC 3: SOFT ROUTING (Feature Modulation)
+        prot_routed = prot_h * gate
+
+        # BƯỚC 4: Final Projection
+        prot_vec = self.prot_fc2(prot_routed)
+
+        # Xử lý nhánh GO Term
+        go_vec = self.go_projector(go_embeddings)
+
+        # Normalize & Cosine
         prot_vec = F.normalize(prot_vec, p=2, dim=1)
         go_vec = F.normalize(go_vec, p=2, dim=1)
 
-        # 4. Tính Similarity
         cosine_sim = torch.matmul(prot_vec, go_vec.T)
+        logit_scale = self.logit_scale.exp().clamp(max=100)
 
-        # 5. Scale logits
-        logit_scale = self.logit_scale.exp().clamp(max=50)
-        logits = cosine_sim * logit_scale
-
-        return logits
+        return cosine_sim * logit_scale
