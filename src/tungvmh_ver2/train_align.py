@@ -70,6 +70,7 @@ class ProteinGODataset(Dataset):
         self.features = self.features.share_memory_()  # Optimize for DataLoader workers
 
         # Labels
+        # Lưu ý: Các phần tử trong mảng này có thể là numpy array read-only
         self.go_terms_id_list = train_df["go_terms_id"].values
 
     def __len__(self):
@@ -81,7 +82,16 @@ class ProteinGODataset(Dataset):
 
         label_vec = torch.zeros(self.num_classes, dtype=torch.float32)
         indices = self.go_terms_id_list[idx]
+
         if indices is not None and len(indices) > 0:
+            # --- FIX WARNING: The given NumPy array is not writable ---
+            # PyTorch yêu cầu mảng numpy phải writable khi dùng làm index.
+            # Dữ liệu đọc từ Parquet/Pandas đôi khi là read-only view.
+            # Ta copy ra bản mới để đảm bảo writable.
+            if isinstance(indices, np.ndarray):
+                indices = indices.copy()
+            # ----------------------------------------------------------
+
             label_vec[indices] = 1.0
 
         return input_vec, label_vec
@@ -151,9 +161,11 @@ def train():
     )
     model = ProteinGOAligner(esm_dim=INPUT_DIM, go_emb_dim=768).to(DEVICE)
 
-    # criterion = AsymmetricLoss(gamma_neg=4, gamma_pos=1, clip=0.05).to(DEVICE)
+    # Loss Function
+    # Dùng BCEWithLogitsLoss với pos_weight để xử lý mất cân bằng
     pos_weight = torch.tensor([15.0]).to(DEVICE)
     criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+
     optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-4)
 
     # Scheduler
