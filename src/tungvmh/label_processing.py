@@ -15,7 +15,7 @@ from utils.mapping import GOTermMapper
 
 def main():
     # Paths
-    vocab_path = "data/processed/vocab.pkl"
+    vocab_path = "data/processed_ver2/vocab.pkl"
     obo_path = "data/Train/go-basic.obo"
     output_path = "data/processed2/label.parquet"
 
