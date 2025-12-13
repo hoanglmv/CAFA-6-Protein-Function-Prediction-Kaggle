@@ -85,9 +85,6 @@ class ProteinGODataset(Dataset):
 
         if indices is not None and len(indices) > 0:
             # --- FIX WARNING: The given NumPy array is not writable ---
-            # PyTorch yêu cầu mảng numpy phải writable khi dùng làm index.
-            # Dữ liệu đọc từ Parquet/Pandas đôi khi là read-only view.
-            # Ta copy ra bản mới để đảm bảo writable.
             if isinstance(indices, np.ndarray):
                 indices = indices.copy()
             # ----------------------------------------------------------
@@ -108,17 +105,40 @@ def train():
     num_classes = len(vocab_data["top_terms"])
     print(f"Vocab size: {num_classes}")
 
-    # 2. Load Label Embeddings
+    # =========================================================================
+    # 2. LOAD & CONCAT LABEL EMBEDDINGS (TEXT + GRAPH)
+    # =========================================================================
     print(f"Loading label embeddings from {LABEL_PATH}...")
     if not os.path.exists(LABEL_PATH):
         print("Label file missing.")
         return
+    
     label_df = pd.read_parquet(LABEL_PATH).sort_values("id")
-    train_go_embeddings = np.stack(label_df["embedding"].values)
-    go_embeddings_tensor = torch.tensor(train_go_embeddings, dtype=torch.float32).to(
-        DEVICE
-    )
-    print(f"GO Embeddings Shape: {go_embeddings_tensor.shape}")
+    
+    # a. Load Text Embeddings (BioBERT/ESM) - Shape: (Num_Classes, 768)
+    print("Stacking Text Embeddings...")
+    text_embeddings = np.stack(label_df["embedding"].values)
+    
+    # b. Load Node Embeddings (Node2Vec) - Shape: (Num_Classes, 64)
+    # Kiểm tra xem cột node_embedding có tồn tại không
+    if "node_embedding" in label_df.columns:
+        print("Stacking Graph Node Embeddings...")
+        node_embeddings = np.stack(label_df["node_embedding"].values)
+        
+        # c. Concatenate: [Text, Node] -> (Num_Classes, 768 + 64)
+        print("🔗 Concatenating Text and Node Embeddings...")
+        full_go_embeddings = np.concatenate([text_embeddings, node_embeddings], axis=1)
+    else:
+        print("⚠️ Warning: 'node_embedding' column not found. Using only text embeddings.")
+        full_go_embeddings = text_embeddings
+        
+    # Chuyển sang Tensor
+    go_embeddings_tensor = torch.tensor(full_go_embeddings, dtype=torch.float32).to(DEVICE)
+    
+    # Tự động lấy kích thước embedding mới
+    GO_EMB_DIM = go_embeddings_tensor.shape[1]
+    print(f"✅ Final GO Embeddings Shape: {go_embeddings_tensor.shape} (Dim: {GO_EMB_DIM})")
+    # =========================================================================
 
     # 3. Load Training Data
     print(f"Loading training data from {TRAIN_PATH}...")
@@ -155,14 +175,15 @@ def train():
     )
 
     # 4. Model Initialization
-    # Quan trọng: Cập nhật esm_dim = INPUT_DIM (2564)
+    # Cập nhật go_emb_dim bằng biến GO_EMB_DIM vừa tính được ở trên
     print(
-        f"Initializing model with Input Dim: {INPUT_DIM} (ESM: {EMBEDDING_DIM} + Tax: {TAXONOMY_DIM})"
+        f"Initializing model with Input Dim: {INPUT_DIM} (Protein) and GO Dim: {GO_EMB_DIM} (Label)"
     )
-    model = ProteinGOAligner(esm_dim=INPUT_DIM, go_emb_dim=768).to(DEVICE)
+    
+    # --- UPDATE: Truyền dynamic GO_EMB_DIM ---
+    model = ProteinGOAligner(esm_dim=INPUT_DIM, go_emb_dim=GO_EMB_DIM).to(DEVICE)
 
     # Loss Function
-    # Dùng BCEWithLogitsLoss với pos_weight để xử lý mất cân bằng
     pos_weight = torch.tensor([15.0]).to(DEVICE)
     criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
