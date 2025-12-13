@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 from tqdm import tqdm
 import sys
+import torch  # <--- Thêm thư viện torch để check GPU
 
 # Add src to path to import modules
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
@@ -18,10 +19,17 @@ except ImportError:
     print("⚠️ Error importing embed_labels. Text embeddings might fail.")
 
 try:
-    # Import module Node2Vec vừa tạo
+    # Import module Node2Vec
     from src.encode.graph_embedding import generate_node2vec_embeddings 
 except ImportError:
     print("⚠️ Error importing generate_node2vec_embeddings. Make sure src/encode/graph_embedding.py exists.")
+
+# --- CONFIG DEVICE ---
+# Kiểm tra xem có GPU không
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"🚀 Running on: {DEVICE.upper()}")
+if DEVICE == "cuda":
+    print(f"   GPU Name: {torch.cuda.get_device_name(0)}")
 
 def main():
     # Paths
@@ -59,9 +67,9 @@ def main():
     graph = obonet.read_obo(obo_path)
 
     # ==========================================
-    # PHẦN 1: TEXT EMBEDDING (BioBERT/ESM)
+    # PHẦN 1: TEXT EMBEDDING (GPU ACCELERATED)
     # ==========================================
-    print("\n--- Processing Text Embeddings ---")
+    print(f"\n--- Processing Text Embeddings on {DEVICE.upper()} ---")
     ids = []
     names = []
     definitions = []
@@ -90,25 +98,35 @@ def main():
         definitions.append(text_content)
 
     print(f"🔤 Embedding {len(definitions)} terms (Text)...")
-    text_embeddings = embed_labels(definitions, batch_size=64, show_progress_bar=True)
+    
+    # --- UPDATE: Thêm tham số device và tăng batch_size ---
+    # Với RTX 3060, batch_size=256 chạy rất mượt cho model MiniLM
+    text_embeddings = embed_labels(
+        definitions, 
+        batch_size=256, 
+        show_progress_bar=True,
+        device=DEVICE    # Truyền device vào hàm
+    )
     
     # ==========================================
-    # PHẦN 2: NODE EMBEDDING (Node2Vec)
+    # PHẦN 2: NODE EMBEDDING (CPU - Gensim)
     # ==========================================
-    print("\n--- Processing Graph Node Embeddings ---")
+    print("\n--- Processing Graph Node Embeddings (Node2Vec usually runs on CPU) ---")
     
-    # Cấu hình Node2Vec (bạn có thể chỉnh dimensions tùy ý, thường là 64 hoặc 128)
+    # Cấu hình Node2Vec
     NODE_DIM = 64 
     
-    # Gọi hàm từ module mới
-    # Lưu ý: Hàm này chạy trên toàn bộ đồ thị GO để lấy ngữ cảnh đầy đủ, 
-    # sau đó ta mới lọc ra các top_terms cần thiết.
+    # Node2Vec (Gensim) chạy trên CPU, ta tận dụng tối đa số core
+    num_cpus = os.cpu_count()
+    workers = max(1, num_cpus - 1) # Chừa lại 1 core cho hệ thống
+    print(f"Using {workers} CPU workers for Random Walks...")
+
     full_graph_embeddings = generate_node2vec_embeddings(
         graph, 
         dimensions=NODE_DIM, 
         walk_length=30, 
         num_walks=100, 
-        workers=4
+        workers=workers # Tối ưu số luồng CPU
     )
     
     # Map kết quả từ full graph vào danh sách top_terms
@@ -117,7 +135,6 @@ def main():
         if term in full_graph_embeddings:
             node_embeddings_list.append(full_graph_embeddings[term])
         else:
-            # Fallback nếu term không có trong graph (hiếm gặp)
             node_embeddings_list.append(np.zeros(NODE_DIM, dtype=np.float32))
 
     # ==========================================
@@ -127,14 +144,13 @@ def main():
     df = pd.DataFrame(
         {
             "id": ids,            # Index 0-4999
-            "name": names,        # GO ID (e.g., GO:0005515)
-            "embedding": list(text_embeddings),       # Text vector (768 or 1280 dim)
-            "node_embedding": node_embeddings_list    # Graph vector (64 dim)
+            "name": names,        # GO ID
+            "embedding": list(text_embeddings),       # Text vector
+            "node_embedding": node_embeddings_list    # Graph vector
         }
     )
 
     print(f"💾 Saving to {output_path}...")
-    # Lưu parquet hỗ trợ lưu cột chứa list/array
     df.to_parquet(output_path)
     
     # Print sample to verify

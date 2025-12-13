@@ -140,7 +140,9 @@ def predict(alpha=0.5):
     num_classes = len(top_terms)
     print(f"Vocab size: {num_classes}")
 
-    # 2. Prepare GO Embeddings
+    # =========================================================================
+    # 2. PREPARE GO EMBEDDINGS (UPDATED TO MATCH TRAIN.PY)
+    # =========================================================================
     LABEL_PATH = os.path.join(PROCESSED2_DIR, "label.parquet")
     print(f"Loading label embeddings from {LABEL_PATH}...")
 
@@ -154,11 +156,28 @@ def predict(alpha=0.5):
     if len(label_df) != num_classes:
         print(f"Warning: Label file has {len(label_df)} terms, expected {num_classes}.")
 
-    train_go_embeddings = np.stack(label_df["embedding"].values)
+    # a. Load Text Embeddings
+    print("Stacking Text Embeddings...")
+    text_embeddings = np.stack(label_df["embedding"].values)
 
-    go_embeddings_tensor = torch.tensor(train_go_embeddings, dtype=torch.float32).to(
-        DEVICE
-    )
+    # b. Load Node Embeddings (Node2Vec) if available
+    if "node_embedding" in label_df.columns:
+        print("Stacking Graph Node Embeddings...")
+        node_embeddings = np.stack(label_df["node_embedding"].values)
+        
+        # c. Concatenate
+        print("🔗 Concatenating Text and Node Embeddings...")
+        full_go_embeddings = np.concatenate([text_embeddings, node_embeddings], axis=1)
+    else:
+        print("⚠️ Warning: 'node_embedding' column not found. Using only text embeddings.")
+        full_go_embeddings = text_embeddings
+
+    go_embeddings_tensor = torch.tensor(full_go_embeddings, dtype=torch.float32).to(DEVICE)
+    
+    # Tự động lấy dimension từ dữ liệu thật
+    GO_EMB_DIM = go_embeddings_tensor.shape[1]
+    print(f"✅ Final GO Embeddings Shape: {go_embeddings_tensor.shape} (Dim: {GO_EMB_DIM})")
+    # =========================================================================
 
     # 3. Load Test Data
     print(f"Loading test data from {TEST_PATH}...")
@@ -176,16 +195,24 @@ def predict(alpha=0.5):
     )
 
     # 5. Load Model
-    # UPDATE: Khởi tạo model với INPUT_DIM = 2564
-    print(f"Initializing model with esm_dim={INPUT_DIM} (2560 ESM + 4 Tax)...")
-    model = ProteinGOAligner(esm_dim=INPUT_DIM, go_emb_dim=768).to(DEVICE)
+    # UPDATE: Khởi tạo model với INPUT_DIM và dynamic GO_EMB_DIM
+    print(f"Initializing model with esm_dim={INPUT_DIM} and go_emb_dim={GO_EMB_DIM}...")
+    model = ProteinGOAligner(esm_dim=INPUT_DIM, go_emb_dim=GO_EMB_DIM).to(DEVICE)
 
     if not os.path.exists(MODEL_PATH):
         print(f"Model not found at {MODEL_PATH}")
         return
 
     print(f"Loading weights from {MODEL_PATH}...")
-    model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
+    try:
+        model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
+    except RuntimeError as e:
+        print("\n❌ ERROR LOADING WEIGHTS:")
+        print("Có thể do lệch dimensions giữa file train và test.")
+        print(f"Test config: ESM_DIM={INPUT_DIM}, GO_DIM={GO_EMB_DIM}")
+        print("Chi tiết lỗi:", e)
+        return
+        
     model.eval()
 
     # 6. Predict
@@ -200,12 +227,11 @@ def predict(alpha=0.5):
             batch_df = test_df.iloc[start_idx:end_idx]
             batch_ids = batch_df["id"].values
 
-            # --- NEW DATA PREPARATION LOGIC ---
+            # --- DATA PREPARATION (Match Train Logic) ---
             # 1. Get Embeddings (Batch, 2560)
             emb_batch = np.stack(batch_df["embedding"].values)
 
             # 2. Get Superkingdom Vectors (Batch, 4)
-            # data_processing2.py đã đảm bảo cột này tồn tại trong test.parquet
             tax_batch = np.stack(batch_df["superkingdom"].values)
 
             # 3. Concatenate -> (Batch, 2564)
@@ -217,7 +243,7 @@ def predict(alpha=0.5):
 
             # DL Scores
             logits = model(prot_input, go_embeddings_tensor)
-            dl_probs = torch.sigmoid(logits).cpu().numpy()  # (Batch, 5000)
+            dl_probs = torch.sigmoid(logits).cpu().numpy()  # (Batch, Num_Classes)
 
             final_probs = dl_probs
 
@@ -244,13 +270,15 @@ def predict(alpha=0.5):
 
             # Top K
             final_probs_t = torch.from_numpy(final_probs)
-            topk_vals, topk_inds = torch.topk(final_probs_t, k=TOP_K, dim=1)
+            # Chỉ lấy Top K nếu số lượng class > K, nếu không thì lấy hết
+            k_val = min(TOP_K, final_probs_t.shape[1])
+            topk_vals, topk_inds = torch.topk(final_probs_t, k=k_val, dim=1)
 
             topk_vals = topk_vals.numpy()
             topk_inds = topk_inds.numpy()
 
             for j, prot_id in enumerate(batch_ids):
-                for k in range(TOP_K):
+                for k in range(k_val):
                     prob = topk_vals[j, k]
                     if prob > 0.001:
                         idx = topk_inds[j, k]
