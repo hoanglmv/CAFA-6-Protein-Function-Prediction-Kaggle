@@ -3,7 +3,8 @@ import sys
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader, random_split
+from torch.utils.data import Dataset, DataLoader, Subset
+from sklearn.model_selection import KFold
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
@@ -30,17 +31,73 @@ VOCAB_PATH = os.path.join(PROCESSED_DIR, "vocab.pkl")
 LABEL_PATH = os.path.join(PROCESSED2_DIR, "label.parquet")
 
 MODEL_SAVE_DIR = os.path.join(PROJECT_ROOT, "models_ver2")
-MODEL_SAVE_PATH = os.path.join(MODEL_SAVE_DIR, "align_model.pth")
 
 BATCH_SIZE = 1024
 EPOCHS = 50
 LEARNING_RATE = 3e-4
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+N_FOLDS = 5  # Cross-Validation Folds
 
 # --- PARAMETERS ---
 EMBEDDING_DIM = 2560
 TAXONOMY_DIM = 4  # Kích thước vector Superkingdom
 INPUT_DIM = EMBEDDING_DIM + TAXONOMY_DIM  # 2564
+
+
+# ==================== ASYMMETRIC LOSS ====================
+class AsymmetricLoss(nn.Module):
+    def __init__(
+        self,
+        gamma_neg=4,
+        gamma_pos=1,
+        clip=0.05,
+        eps=1e-8,
+        disable_torch_grad_focal_loss=True,
+    ):
+        super(AsymmetricLoss, self).__init__()
+
+        self.gamma_neg = gamma_neg
+        self.gamma_pos = gamma_pos
+        self.clip = clip
+        self.disable_torch_grad_focal_loss = disable_torch_grad_focal_loss
+        self.eps = eps
+
+    def forward(self, x, y):
+        """ "
+        Parameters
+        ----------
+        x: input logits
+        y: targets (multi-label binarized vector)
+        """
+
+        # Calculating Probabilities
+        x_sigmoid = torch.sigmoid(x)
+        xs_pos = x_sigmoid
+        xs_neg = 1 - x_sigmoid
+
+        # Asymmetric Clipping
+        if self.clip is not None and self.clip > 0:
+            xs_neg = (xs_neg + self.clip).clamp(max=1)
+
+        # Basic CE calculation
+        los_pos = y * torch.log(xs_pos.clamp(min=self.eps))
+        los_neg = (1 - y) * torch.log(xs_neg.clamp(min=self.eps))
+        loss = los_pos + los_neg
+
+        # Asymmetric Focusing
+        if self.gamma_neg > 0 or self.gamma_pos > 0:
+            if self.disable_torch_grad_focal_loss:
+                torch.set_grad_enabled(False)
+            pt0 = xs_pos * y
+            pt1 = xs_neg * (1 - y)  # pt = p if t > 0 else 1-p
+            pt = pt0 + pt1
+            one_sided_gamma = self.gamma_pos * y + self.gamma_neg * (1 - y)
+            one_sided_w = torch.pow(1 - pt, one_sided_gamma)
+            if self.disable_torch_grad_focal_loss:
+                torch.set_grad_enabled(True)
+            loss *= one_sided_w
+
+        return -loss.sum()
 
 
 class ProteinGODataset(Dataset):
@@ -112,32 +169,38 @@ def train():
     if not os.path.exists(LABEL_PATH):
         print("Label file missing.")
         return
-    
+
     label_df = pd.read_parquet(LABEL_PATH).sort_values("id")
-    
+
     # a. Load Text Embeddings (BioBERT/ESM) - Shape: (Num_Classes, 768)
     print("Stacking Text Embeddings...")
     text_embeddings = np.stack(label_df["embedding"].values)
-    
+
     # b. Load Node Embeddings (Node2Vec) - Shape: (Num_Classes, 64)
     # Kiểm tra xem cột node_embedding có tồn tại không
     if "node_embedding" in label_df.columns:
         print("Stacking Graph Node Embeddings...")
         node_embeddings = np.stack(label_df["node_embedding"].values)
-        
+
         # c. Concatenate: [Text, Node] -> (Num_Classes, 768 + 64)
         print("🔗 Concatenating Text and Node Embeddings...")
         full_go_embeddings = np.concatenate([text_embeddings, node_embeddings], axis=1)
     else:
-        print("⚠️ Warning: 'node_embedding' column not found. Using only text embeddings.")
+        print(
+            "⚠️ Warning: 'node_embedding' column not found. Using only text embeddings."
+        )
         full_go_embeddings = text_embeddings
-        
+
     # Chuyển sang Tensor
-    go_embeddings_tensor = torch.tensor(full_go_embeddings, dtype=torch.float32).to(DEVICE)
-    
+    go_embeddings_tensor = torch.tensor(full_go_embeddings, dtype=torch.float32).to(
+        DEVICE
+    )
+
     # Tự động lấy kích thước embedding mới
     GO_EMB_DIM = go_embeddings_tensor.shape[1]
-    print(f"✅ Final GO Embeddings Shape: {go_embeddings_tensor.shape} (Dim: {GO_EMB_DIM})")
+    print(
+        f"✅ Final GO Embeddings Shape: {go_embeddings_tensor.shape} (Dim: {GO_EMB_DIM})"
+    )
     # =========================================================================
 
     # 3. Load Training Data
@@ -148,138 +211,135 @@ def train():
     train_df = pd.read_parquet(TRAIN_PATH)
     print(f"Total samples: {len(train_df)}")
 
-    # Dataset & Loader
+    # Dataset
     full_dataset = ProteinGODataset(train_df, num_classes=num_classes)
 
-    train_size = int(0.95 * len(full_dataset))
-    val_size = len(full_dataset) - train_size
-    train_dataset, val_dataset = random_split(
-        full_dataset,
-        [train_size, val_size],
-        generator=torch.Generator().manual_seed(42),
-    )
+    # ==================== CROSS VALIDATION ====================
+    kf = KFold(n_splits=N_FOLDS, shuffle=True, random_state=42)
 
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=BATCH_SIZE,
-        shuffle=True,
-        num_workers=4,
-        pin_memory=True,
-    )
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=BATCH_SIZE,
-        shuffle=False,
-        num_workers=4,
-        pin_memory=True,
-    )
+    for fold, (train_idx, val_idx) in enumerate(kf.split(full_dataset)):
+        print(f"\n{'='*20} FOLD {fold+1}/{N_FOLDS} {'='*20}")
 
-    # 4. Model Initialization
-    # Cập nhật go_emb_dim bằng biến GO_EMB_DIM vừa tính được ở trên
-    print(
-        f"Initializing model with Input Dim: {INPUT_DIM} (Protein) and GO Dim: {GO_EMB_DIM} (Label)"
-    )
-    
-    # --- UPDATE: Truyền dynamic GO_EMB_DIM ---
-    model = ProteinGOAligner(esm_dim=INPUT_DIM, go_emb_dim=GO_EMB_DIM).to(DEVICE)
+        train_subsampler = Subset(full_dataset, train_idx)
+        val_subsampler = Subset(full_dataset, val_idx)
 
-    # Loss Function
-    pos_weight = torch.tensor([15.0]).to(DEVICE)
-    criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
-
-    optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-4)
-
-    # Scheduler
-    scheduler = optim.lr_scheduler.OneCycleLR(
-        optimizer,
-        max_lr=LEARNING_RATE,
-        steps_per_epoch=len(train_loader),
-        epochs=EPOCHS,
-        pct_start=0.1,
-    )
-
-    # Training Loop
-    best_val_loss = float("inf")
-    best_val_f1 = 0.0
-    patience = 8
-    patience_counter = 0
-
-    print("Starting training...")
-    for epoch in range(EPOCHS):
-        model.train()
-        train_loss = 0
-
-        pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{EPOCHS}")
-        for inputs, labels in pbar:
-            inputs = inputs.to(DEVICE, non_blocking=True)
-            labels = labels.to(DEVICE, non_blocking=True)
-
-            optimizer.zero_grad()
-            logits = model(inputs, go_embeddings_tensor)
-            loss = criterion(logits, labels)
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            optimizer.step()
-            scheduler.step()
-
-            train_loss += loss.item()
-            pbar.set_postfix({"loss": loss.item()})
-
-        avg_train_loss = train_loss / len(train_loader)
-
-        # Validation
-        model.eval()
-        val_loss = 0
-        all_preds = []
-        all_targets = []
-
-        with torch.no_grad():
-            for inputs, labels in val_loader:
-                inputs = inputs.to(DEVICE)
-                labels = labels.to(DEVICE)
-
-                logits = model(inputs, go_embeddings_tensor)
-                val_loss += criterion(logits, labels).item()
-
-                # Simple F1 Check (Threshold 0.3)
-                probs = torch.sigmoid(logits)
-                preds = (probs > 0.3).cpu().int()
-                all_preds.append(preds)
-                all_targets.append(labels.cpu().int())
-
-        avg_val_loss = val_loss / len(val_loader)
-
-        # Calc Metrics
-        all_preds_cat = torch.cat(all_preds).numpy()
-        all_targets_cat = torch.cat(all_targets).numpy()
-        val_f1 = f1_score(all_targets_cat, all_preds_cat, average="micro")
-
-        current_lr = optimizer.param_groups[0]["lr"]
-
-        print(
-            f"Epoch {epoch+1} | Train: {avg_train_loss:.4f} | Val: {avg_val_loss:.4f} | F1: {val_f1:.4f} | LR: {current_lr:.2e}"
+        train_loader = DataLoader(
+            train_subsampler,
+            batch_size=BATCH_SIZE,
+            shuffle=True,
+            num_workers=4,
+            pin_memory=True,
+        )
+        val_loader = DataLoader(
+            val_subsampler,
+            batch_size=BATCH_SIZE,
+            shuffle=False,
+            num_workers=4,
+            pin_memory=True,
         )
 
-        # Checkpointing
-        if avg_val_loss < best_val_loss:
-            best_val_loss = avg_val_loss
-            patience_counter = 0
-            torch.save(model.state_dict(), MODEL_SAVE_PATH)
-            print(">>> Saved Best Model (Lowest Loss)")
-        else:
-            patience_counter += 1
-            if patience_counter >= patience:
-                print("Early stopping triggered.")
-                break
+        # Model Initialization (Fresh for each fold)
+        # Pass num_classes for Bias initialization
+        print(
+            f"Initializing model with Input Dim: {INPUT_DIM} (Protein) and GO Dim: {GO_EMB_DIM} (Label)"
+        )
+        model = ProteinGOAligner(
+            esm_dim=INPUT_DIM, go_emb_dim=GO_EMB_DIM, num_classes=num_classes
+        ).to(DEVICE)
 
-        # Optional: Save best F1
-        if val_f1 > best_val_f1:
-            best_val_f1 = val_f1
-            torch.save(
-                model.state_dict(),
-                os.path.join(MODEL_SAVE_DIR, "align_model_best_f1.pth"),
+        # Loss Function: Asymmetric Loss
+        criterion = AsymmetricLoss(gamma_neg=4, gamma_pos=1, clip=0.05)
+
+        optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-4)
+
+        scheduler = optim.lr_scheduler.OneCycleLR(
+            optimizer,
+            max_lr=LEARNING_RATE,
+            steps_per_epoch=len(train_loader),
+            epochs=EPOCHS,
+            pct_start=0.1,
+        )
+
+        best_val_loss = float(
+            "inf"
+        )  # Keep track for potential future use, though F1 is primary
+        best_val_f1 = 0.0
+        patience = 8
+        patience_counter = 0
+
+        fold_save_path = os.path.join(MODEL_SAVE_DIR, f"align_model_fold_{fold}.pth")
+
+        print("Starting training...")
+        for epoch in range(EPOCHS):
+            model.train()
+            train_loss = 0
+
+            pbar = tqdm(train_loader, desc=f"Fold {fold+1} Epoch {epoch+1}/{EPOCHS}")
+            for inputs, labels in pbar:
+                inputs = inputs.to(DEVICE, non_blocking=True)
+                labels = labels.to(DEVICE, non_blocking=True)
+
+                optimizer.zero_grad()
+                logits = model(inputs, go_embeddings_tensor)
+                loss = criterion(logits, labels)
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                optimizer.step()
+                scheduler.step()
+
+                train_loss += loss.item()
+                pbar.set_postfix({"loss": loss.item()})
+
+            avg_train_loss = train_loss / len(train_loader)
+
+            # Validation
+            model.eval()
+            val_loss = 0
+            all_preds = []
+            all_targets = []
+
+            with torch.no_grad():
+                for inputs, labels in val_loader:
+                    inputs = inputs.to(DEVICE)
+                    labels = labels.to(DEVICE)
+
+                    logits = model(inputs, go_embeddings_tensor)
+                    val_loss += criterion(logits, labels).item()
+
+                    # Simple F1 Check (Threshold 0.3)
+                    probs = torch.sigmoid(logits)
+                    preds = (probs > 0.3).cpu().int()
+                    all_preds.append(preds)
+                    all_targets.append(labels.cpu().int())
+
+            avg_val_loss = val_loss / len(val_loader)
+
+            # Calc Metrics
+            all_preds_cat = torch.cat(all_preds).numpy()
+            all_targets_cat = torch.cat(all_targets).numpy()
+            val_f1 = f1_score(all_targets_cat, all_preds_cat, average="micro")
+
+            current_lr = optimizer.param_groups[0]["lr"]
+
+            print(
+                f"Fold {fold+1} Epoch {epoch+1} | Train: {avg_train_loss:.4f} | Val: {avg_val_loss:.4f} | F1: {val_f1:.4f} | LR: {current_lr:.2e}"
             )
-            print(">>> Saved Best F1 Model")
+
+            # Checkpointing based on F1 Score (Better for imbalance)
+            if val_f1 > best_val_f1:
+                best_val_f1 = val_f1
+                patience_counter = 0
+                torch.save(model.state_dict(), fold_save_path)
+                print(f">>> Saved Best F1 Model for Fold {fold+1}")
+            else:
+                patience_counter += 1
+                if patience_counter >= patience:
+                    print("Early stopping triggered.")
+                    break
+
+        print(f"Finished Fold {fold+1}. Best F1: {best_val_f1:.4f}")
+
+    print("Cross-Validation Complete!")
 
 
 if __name__ == "__main__":

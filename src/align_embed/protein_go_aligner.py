@@ -5,7 +5,7 @@ import numpy as np
 
 
 class ProteinGOAligner(nn.Module):
-    def __init__(self, esm_dim=2564, go_emb_dim=768, joint_dim=512):
+    def __init__(self, esm_dim=2564, go_emb_dim=768, joint_dim=512, num_classes=None):
         super().__init__()
 
         # esm_dim=2564 (2560 ESM + 4 Tax)
@@ -35,6 +35,13 @@ class ProteinGOAligner(nn.Module):
         )
 
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(14))
+
+        # ==================== 4. LEARNABLE BIAS ====================
+        # Bias for each GO term to capture prior probability
+        if num_classes is not None:
+            self.go_bias = nn.Parameter(torch.zeros(num_classes))
+        else:
+            self.go_bias = None
 
     def forward(self, prot_features, go_embeddings):
         """
@@ -69,4 +76,10 @@ class ProteinGOAligner(nn.Module):
         cosine_sim = torch.matmul(prot_vec, go_vec.T)
         logit_scale = self.logit_scale.exp().clamp(max=100)
 
-        return cosine_sim * logit_scale
+        logits = cosine_sim * logit_scale
+
+        # Add Bias if available
+        if self.go_bias is not None:
+            logits = logits + self.go_bias
+
+        return logits
