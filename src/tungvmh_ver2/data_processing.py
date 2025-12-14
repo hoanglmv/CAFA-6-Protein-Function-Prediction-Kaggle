@@ -10,7 +10,7 @@ import networkx as nx
 
 # ==================== CONFIGURATION ====================
 CONFIG = {
-    "top_n_terms": 5000,
+    "top_n_terms": 10000,
 }
 # =======================================================
 
@@ -104,12 +104,12 @@ def propagate_and_select_top_k(protein_to_terms, graph, top_k=5000):
     # Select Top K
     top_terms_list = term_counter.most_common(top_k)
     top_terms = [t for t, c in top_terms_list]
-    
+
     # Create mapping: Term -> Index (0 to K-1)
     term_to_idx = {t: i for i, t in enumerate(top_terms)}
-    
+
     print(f"Selected {len(top_terms)} terms for training targets.")
-    
+
     return protein_to_propagated, top_terms, term_to_idx
 
 
@@ -185,7 +185,7 @@ def process_fasta(
 
             # Filter and Map to Indices (0-4999)
             go_ids = [term_to_idx[t] for t in terms if t in term_to_idx]
-            
+
             if not go_ids:
                 continue
 
@@ -197,7 +197,9 @@ def process_fasta(
                     "seq": seq,
                     "taxonomy": tax,
                     # "go_terms": terms if is_train else None, # Optional: Don't save raw terms to save space
-                    "go_terms_id": go_ids if is_train else None, # List of indices 0-4999
+                    "go_terms_id": (
+                        go_ids if is_train else None
+                    ),  # List of indices 0-4999
                 }
             )
 
@@ -230,8 +232,8 @@ def main():
     with open(vocab_path, "wb") as f:
         pickle.dump(
             {
-                "top_terms": top_terms,       # List of 5000 terms
-                "term_to_idx": term_to_idx,   # Mapping Term -> Index (0-4999)
+                "top_terms": top_terms,  # List of 5000 terms
+                "term_to_idx": term_to_idx,  # Mapping Term -> Index (0-4999)
                 "config": CONFIG,
             },
             f,

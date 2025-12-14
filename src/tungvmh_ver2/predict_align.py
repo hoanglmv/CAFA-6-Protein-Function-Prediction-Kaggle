@@ -28,7 +28,6 @@ TEST_PATH = os.path.join(PROCESSED2_DIR, "test.parquet")
 VOCAB_PATH = os.path.join(PROCESSED_DIR, "vocab.pkl")
 
 MODEL_SAVE_DIR = os.path.join(PROJECT_ROOT, "models_ver2")
-MODEL_PATH = os.path.join(MODEL_SAVE_DIR, "align_model_best_f1.pth")
 OUTPUT_PATH = os.path.join(PROJECT_ROOT, "data", "submission_ver2.tsv")
 
 # Diamond Paths
@@ -39,6 +38,7 @@ OBO_PATH = os.path.join(DATA_DIR, "Train", "go-basic.obo")
 BATCH_SIZE = 1024
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 TOP_K = 100
+N_FOLDS = 5  # Must match train.py
 
 # --- PARAMETERS (Must match train.py) ---
 EMBEDDING_DIM = 2560
@@ -74,7 +74,7 @@ def get_propagation_steps(obo_path, term_to_idx):
 
 def load_and_process_diamond(diamond_file, train_terms_file, test_ids, term_to_idx):
     """
-    Load Diamond results and map to local indices (0-4999).
+    Load Diamond results and map to local indices.
     """
     if not os.path.exists(diamond_file):
         print(f"Warning: Diamond file not found at {diamond_file}")
@@ -141,7 +141,7 @@ def predict(alpha=0.5):
     print(f"Vocab size: {num_classes}")
 
     # =========================================================================
-    # 2. PREPARE GO EMBEDDINGS (UPDATED TO MATCH TRAIN.PY)
+    # 2. PREPARE GO EMBEDDINGS
     # =========================================================================
     LABEL_PATH = os.path.join(PROCESSED2_DIR, "label.parquet")
     print(f"Loading label embeddings from {LABEL_PATH}...")
@@ -156,27 +156,27 @@ def predict(alpha=0.5):
     if len(label_df) != num_classes:
         print(f"Warning: Label file has {len(label_df)} terms, expected {num_classes}.")
 
-    # a. Load Text Embeddings
     print("Stacking Text Embeddings...")
     text_embeddings = np.stack(label_df["embedding"].values)
 
-    # b. Load Node Embeddings (Node2Vec) if available
     if "node_embedding" in label_df.columns:
         print("Stacking Graph Node Embeddings...")
         node_embeddings = np.stack(label_df["node_embedding"].values)
-        
-        # c. Concatenate
         print("🔗 Concatenating Text and Node Embeddings...")
         full_go_embeddings = np.concatenate([text_embeddings, node_embeddings], axis=1)
     else:
-        print("⚠️ Warning: 'node_embedding' column not found. Using only text embeddings.")
+        print(
+            "⚠️ Warning: 'node_embedding' column not found. Using only text embeddings."
+        )
         full_go_embeddings = text_embeddings
 
-    go_embeddings_tensor = torch.tensor(full_go_embeddings, dtype=torch.float32).to(DEVICE)
-    
-    # Tự động lấy dimension từ dữ liệu thật
+    go_embeddings_tensor = torch.tensor(full_go_embeddings, dtype=torch.float32).to(
+        DEVICE
+    )
     GO_EMB_DIM = go_embeddings_tensor.shape[1]
-    print(f"✅ Final GO Embeddings Shape: {go_embeddings_tensor.shape} (Dim: {GO_EMB_DIM})")
+    print(
+        f"✅ Final GO Embeddings Shape: {go_embeddings_tensor.shape} (Dim: {GO_EMB_DIM})"
+    )
     # =========================================================================
 
     # 3. Load Test Data
@@ -194,26 +194,31 @@ def predict(alpha=0.5):
         DIAMOND_RAW_PATH, TRAIN_TERMS_PATH, test_df["id"].values, term_to_idx
     )
 
-    # 5. Load Model
-    # UPDATE: Khởi tạo model với INPUT_DIM và dynamic GO_EMB_DIM
-    print(f"Initializing model with esm_dim={INPUT_DIM} and go_emb_dim={GO_EMB_DIM}...")
-    model = ProteinGOAligner(esm_dim=INPUT_DIM, go_emb_dim=GO_EMB_DIM).to(DEVICE)
+    # 5. Load Models (Ensemble K-Fold)
+    models = []
+    print(f"Loading {N_FOLDS} models for ensemble...")
 
-    if not os.path.exists(MODEL_PATH):
-        print(f"Model not found at {MODEL_PATH}")
-        return
+    for fold in range(N_FOLDS):
+        model_path = os.path.join(MODEL_SAVE_DIR, f"align_model_fold_{fold}.pth")
+        if not os.path.exists(model_path):
+            print(f"⚠️ Model for Fold {fold} not found at {model_path}. Skipping.")
+            continue
 
-    print(f"Loading weights from {MODEL_PATH}...")
-    try:
-        model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
-    except RuntimeError as e:
-        print("\n❌ ERROR LOADING WEIGHTS:")
-        print("Có thể do lệch dimensions giữa file train và test.")
-        print(f"Test config: ESM_DIM={INPUT_DIM}, GO_DIM={GO_EMB_DIM}")
-        print("Chi tiết lỗi:", e)
+        model = ProteinGOAligner(
+            esm_dim=INPUT_DIM, go_emb_dim=GO_EMB_DIM, num_classes=num_classes
+        ).to(DEVICE)
+
+        try:
+            model.load_state_dict(torch.load(model_path, map_location=DEVICE))
+            model.eval()
+            models.append(model)
+            print(f"✅ Loaded Fold {fold}")
+        except Exception as e:
+            print(f"❌ Error loading Fold {fold}: {e}")
+
+    if not models:
+        print("No models loaded! Exiting.")
         return
-        
-    model.eval()
 
     # 6. Predict
     results = []
@@ -227,38 +232,37 @@ def predict(alpha=0.5):
             batch_df = test_df.iloc[start_idx:end_idx]
             batch_ids = batch_df["id"].values
 
-            # --- DATA PREPARATION (Match Train Logic) ---
-            # 1. Get Embeddings (Batch, 2560)
+            # --- DATA PREPARATION ---
             emb_batch = np.stack(batch_df["embedding"].values)
-
-            # 2. Get Superkingdom Vectors (Batch, 4)
             tax_batch = np.stack(batch_df["superkingdom"].values)
-
-            # 3. Concatenate -> (Batch, 2564)
             features = np.hstack([emb_batch, tax_batch])
-
-            # 4. Convert to Tensor
             prot_input = torch.tensor(features).float().to(DEVICE)
-            # -----------------------------------
 
-            # DL Scores
-            logits = model(prot_input, go_embeddings_tensor)
-            dl_probs = torch.sigmoid(logits).cpu().numpy()  # (Batch, Num_Classes)
+            # --- ENSEMBLE PREDICTION ---
+            avg_probs = None
+            for model in models:
+                logits = model(prot_input, go_embeddings_tensor)
+                probs = torch.sigmoid(logits).cpu().numpy()
+                if avg_probs is None:
+                    avg_probs = probs
+                else:
+                    avg_probs += probs
 
-            final_probs = dl_probs
+            dl_probs = avg_probs / len(models)
+            final_probs = dl_probs.copy()
 
             # Ensemble Diamond
             if diamond_data:
-                diamond_batch = np.zeros_like(dl_probs)
-                has_info = False
                 for b_idx, pid in enumerate(batch_ids):
                     if pid in diamond_data:
-                        has_info = True
+                        d_scores = np.zeros(dl_probs.shape[1], dtype=np.float32)
                         for go_idx, score in diamond_data[pid].items():
-                            diamond_batch[b_idx, go_idx] = score
+                            if go_idx < dl_probs.shape[1]:
+                                d_scores[go_idx] = score
 
-                if has_info:
-                    final_probs = (alpha * dl_probs) + ((1 - alpha) * diamond_batch)
+                        final_probs[b_idx] = (alpha * dl_probs[b_idx]) + (
+                            (1 - alpha) * d_scores
+                        )
 
             # Propagation
             for child_idx, parent_indices in propagation_steps:
@@ -270,7 +274,6 @@ def predict(alpha=0.5):
 
             # Top K
             final_probs_t = torch.from_numpy(final_probs)
-            # Chỉ lấy Top K nếu số lượng class > K, nếu không thì lấy hết
             k_val = min(TOP_K, final_probs_t.shape[1])
             topk_vals, topk_inds = torch.topk(final_probs_t, k=k_val, dim=1)
 

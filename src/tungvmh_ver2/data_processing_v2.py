@@ -145,6 +145,7 @@ def get_or_create_embeddings(df_meta, embedding_file_path, desc="Computing Embed
                 pass
 
             if emb_vector is None:
+                # print(f"Warning: Could not embed sequence for {pid}. Using zeros.")
                 emb_vector = np.zeros(2560, dtype=np.float32)
 
             # Chỉ lưu ID và Embedding vào cache
