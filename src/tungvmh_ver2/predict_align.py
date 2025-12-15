@@ -38,7 +38,7 @@ OBO_PATH = os.path.join(DATA_DIR, "Train", "go-basic.obo")
 BATCH_SIZE = 1024
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 TOP_K = 100
-N_FOLDS = 5  # Must match train.py
+N_FOLDS = 8  # Must match train.py
 
 # --- PARAMETERS (Must match train.py) ---
 EMBEDDING_DIM = 2560
