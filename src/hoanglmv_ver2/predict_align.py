@@ -26,14 +26,14 @@ PROCESSED2_DIR = os.path.join(DATA_DIR, "processed2_ver2")
 TEST_PATH = os.path.join(PROCESSED2_DIR, "test.parquet")
 VOCAB_PATH = os.path.join(PROCESSED_DIR, "vocab.pkl")
 
-MODEL_SAVE_DIR = os.path.join(PROJECT_ROOT, "models_ver2")
-OUTPUT_PATH = os.path.join(PROJECT_ROOT, "data", "submission_ver2.tsv")
+MODEL_SAVE_DIR = os.path.join(PROJECT_ROOT, "models_ver3")
+OUTPUT_PATH = os.path.join(PROJECT_ROOT, "data", "submission_ver3.tsv")
 
 # Diamond Paths (Chỉ cần file matches, không cần OBO nữa)
 DIAMOND_RAW_PATH = os.path.join(DATA_DIR, "processed2", "diamond_matches.tsv")
 TRAIN_TERMS_PATH = os.path.join(DATA_DIR, "Train", "train_terms.tsv")
 
-BATCH_SIZE = 1024
+BATCH_SIZE = 512
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 TOP_K = 100 # Số lượng terms giữ lại cho mỗi protein (CAFA thường yêu cầu top 50-100)
 N_FOLDS = 5 # Đã sửa thành 5 cho khớp với train_align.py (bạn đang để 8)

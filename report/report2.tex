@@ -1,0 +1,541 @@
+% Các phần khai báo
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+% Gói hỗ trợ tiếng Việt
+\usepackage[utf8]{inputenc}
+\usepackage[vietnamese]{babel}
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+\usepackage{float}       % Để dùng [H] ép ảnh đứng yên
+\usepackage{subcaption}  % Để chèn nhiều ảnh con (subfigure)
+\begin{document}
+
+
+
+
+% Tiêu đề bài báo
+\title{CAFA6-Protein-Function-Prediction}
+
+\author{
+    % --- LIỆT KÊ TÊN 3 TÁC GIẢ ---
+    \IEEEauthorblockN{Lê Mai Việt Hoàng, Vũ Minh Hoàng Tùng và Nguyễn Thành Lâm}
+    % --- THÔNG TIN TRƯỜNG VÀ EMAIL ---
+    \IEEEauthorblockA{\textit{University of Engineering and Technology} \\
+    \textit{Vietnam National University}\\
+    Hanoi, Vietnam \\
+    % Liệt kê email theo thứ tự tương ứng với tên
+    22022191@vnu.edu.vn, 22022107@vnu.edu.vn, 22022212@vnu.edu.vn}
+}
+
+\maketitle
+
+
+
+
+
+
+% Phần abstract
+\begin{abstract}
+Sự phát triển vượt bậc của các công nghệ giải trình tự thông lượng cao (\textit{high-throughput sequencing}) đã dẫn đến sự tích lũy theo cấp số nhân của dữ liệu chuỗi protein trong các cơ sở dữ liệu công khai. Tuy nhiên, việc xác định đặc tính chức năng của protein thông qua thực nghiệm vẫn là một quá trình chậm chạp, tốn kém và đòi hỏi nhiều nhân lực, dẫn đến khoảng cách ngày càng lớn giữa số lượng chuỗi đã biết và số lượng protein được chú giải chức năng đầy đủ. Để giải quyết điểm nghẽn này, Dự đoán Chức năng Tự động (\textit{Automated Function Prediction - AFP}) đã nổi lên như một nhiệm vụ tính toán quan trọng trong tin sinh học. Cuộc thi Đánh giá Chú giải Chức năng (\textit{Critical Assessment of Functional Annotation - CAFA}) đóng vai trò là thước đo chuẩn toàn cầu để đánh giá và thúc đẩy các phương pháp AFP tiên tiến nhất. Phiên bản thứ sáu, CAFA 6, đặt ra một bài toán phân loại đa nhãn phức tạp liên quan đến hàng chục nghìn thuật ngữ Gene Ontology (GO) trên ba phân nhánh chính: Chức năng Phân tử (\textit{Molecular Function}), Quá trình Sinh học (\textit{Biological Process}) và Thành phần Tế bào (\textit{Cellular Component}). Cuộc thi thách thức các nhà nghiên cứu phát triển các thuật toán có khả năng dự đoán chức năng cho đa dạng các loài sinh vật, bao gồm cả những loài có ít hoặc chưa từng có thông tin chức năng trước đó, qua đó kiểm chứng khả năng tổng quát hóa của các mô hình tính toán trong các kịch bản thực tế khan hiếm dữ liệu.
+\end{abstract}
+
+
+
+
+\begin{IEEEkeywords}
+Dự đoán chức năng protein; CAFA 6; Gene Ontology; Học máy; Tin sinh học.
+\end{IEEEkeywords}
+
+% ==========================================
+% PHẦN I: GIỚI THIỆU
+% ==========================================
+\section{Giới thiệu}
+
+\subsection{Bối cảnh và Động lực}
+Protein là những cỗ máy phân tử đảm nhiệm hầu hết các chức năng quan trọng của sự sống, từ xúc tác các phản ứng sinh hóa, truyền tín hiệu tế bào đến việc tạo nên cấu trúc cơ thể. Trong kỷ nguyên ``Omics'', sự phát triển vượt bậc của công nghệ Giải trình tự Thế hệ mới (\textit{Next-Generation Sequencing - NGS}) đã dẫn đến sự bùng nổ dữ liệu sinh học. Các cơ sở dữ liệu lớn như UniProtKB hiện chứa hàng trăm triệu trình tự protein \cite{uniprot}.
+
+Tuy nhiên, việc xác định chức năng của các protein này thông qua các phương pháp thực nghiệm trong phòng thí nghiệm (\textit{wet-lab}) là một quá trình tốn kém, mất nhiều thời gian và công sức. Hệ quả là sự hình thành một ``khoảng trống chú giải'' (\textit{annotation gap}) ngày càng lớn giữa số lượng trình tự gen đã biết và số lượng protein đã được hiểu rõ về chức năng sinh học. Việc thu hẹp khoảng cách này có ý nghĩa then chốt trong y sinh, giúp đẩy nhanh quá trình phát triển thuốc mới, hiểu rõ cơ chế bệnh tật và cải thiện các ứng dụng công nghệ sinh học.
+
+\subsection{Bài toán và Thách thức}
+Để giải quyết vấn đề trên, cuộc thi Đánh giá Chú giải Chức năng (\textit{Critical Assessment of Functional Annotation - CAFA}) đã được tổ chức định kỳ như một chuẩn mực vàng để đánh giá các thuật toán Dự đoán Chức năng Tự động (\textit{Automated Function Prediction - AFP}).
+
+Bài toán được phát biểu như sau: Từ đầu vào là chuỗi axit amin của một protein chưa biết, mô hình cần dự đoán xác suất protein đó liên kết với các thuật ngữ trong bộ từ điển Gene Ontology (GO).
+
+Từ đó hệ thống GO được chia thành ba nhánh chính:
+
+\begin{itemize}
+    \item \textbf{Chức năng phân tử (Molecular Function - MF):} Các hoạt động ở cấp độ phân tử (ví dụ: liên kết DNA, xúc tác enzyme).
+    \item \textbf{Quá trình sinh học (Biological Process - BP):} Các quy trình lớn hơn mà protein tham gia (ví dụ: phân chia tế bào, phản ứng miễn dịch).
+    \item \textbf{Thành phần tế bào (Cellular Component - CC):} Vị trí hoạt động của protein trong tế bào (ví dụ: ty thể, màng nhân).
+\end{itemize}
+
+Dựa trên bối cảnh cuộc thi CAFA 6, nghiên cứu này tập trung giải quyết các thách thức kỹ thuật cốt lõi:
+
+\begin{itemize}
+    \item \textbf{Không gian nhãn lớn và thưa thớt (Large and Sparse Label Space):} Với hơn 30.000 thuật ngữ GO, đây là bài toán phân loại đa nhãn cực đoan (\textit{extreme multi-label classification}), nơi mỗi protein chỉ liên kết với một số lượng rất nhỏ các nhãn.
+    \item \textbf{Cấu trúc phân cấp (Hierarchical Structure):} Các nhãn GO không độc lập mà liên kết chặt chẽ theo cấu trúc Đồ thị Có hướng Không chu trình (DAG). Việc dự đoán cần đảm bảo tính nhất quán (ví dụ: nếu một protein có chức năng con, nó bắt buộc phải có chức năng cha).
+    \item \textbf{Mất cân bằng dữ liệu nghiêm trọng (Class Imbalance):} Tuân theo phân phối đuôi dài (\textit{Long-tail distribution}), một số ít thuật ngữ xuất hiện rất thường xuyên, trong khi phần lớn các chức năng cụ thể lại cực kỳ hiếm gặp, gây khó khăn cho các mô hình học máy truyền thống.
+    \item \textbf{Sự dịch chuyển miền sinh học (Taxonomic Domain Shift):} Đây là thách thức đặc thù của CAFA 6, khi tập kiểm tra chứa các loài sinh vật mới (\textit{Zero-shot species}) hoàn toàn không xuất hiện trong tập huấn luyện, đòi hỏi mô hình phải có khả năng tổng quát hóa cao dựa trên thông tin phả hệ.
+\end{itemize}
+
+\subsection{Phương pháp Tiếp cận và Đóng góp}
+Chúng tôi đề xuất một khung làm việc (\textit{framework}) học sâu lai ghép, tích hợp sức mạnh của Mô hình Ngôn ngữ Protein (\textit{Protein Language Models - pLMs}) và Biểu diễn Đồ thị Tri thức.
+
+\begin{itemize}
+    \item \textbf{Embedding Model:} Sử dụng mô hình ESM-2 (phiên bản \texttt{esm2\_t36\_3B\_UR50D}) để trích xuất các vector đặc trưng (\textit{embeddings}) giàu ngữ nghĩa từ chuỗi protein, kết hợp với vector định danh loài (\textit{Taxonomy embedding}) để cung cấp ngữ cảnh sinh học.
+    \item \textbf{Alignment Space:} Thay vì phân loại đơn thuần, chúng tôi xây dựng một kiến trúc mạng nơ-ron nhằm ``gióng hàng'' (\textit{align}) không gian đặc trưng của protein với không gian ngữ nghĩa của nhãn GO (được biểu diễn bằng sự kết hợp giữa Text Embedding và Graph Node2Vec Embedding).
+\end{itemize}
+
+Các đóng góp chính của bài báo bao gồm:
+\begin{enumerate}
+    \item Đề xuất một kiến trúc Deep Learning hiệu quả kết hợp ESM-2 và thông tin phân loại học (Taxonomy) để giải quyết vấn đề dự đoán trên các loài chưa biết (\textit{Zero-shot prediction}).
+    \item Xây dựng cơ chế biểu diễn nhãn GO đa chiều, kết hợp thông tin văn bản (\textit{Textual definition}) và cấu trúc đồ thị (\textit{Topological structure via Node2Vec}), giúp mô hình hiểu sâu hơn về mối quan hệ giữa các chức năng.
+    \item Thực nghiệm và chứng minh hiệu quả của phương pháp trên bộ dữ liệu CAFA 6, đồng thời đề xuất chiến lược kết hợp (\textit{Ensemble}) với các phương pháp dựa trên sự tương đồng chuỗi (\textit{Sequence Homology}) để tối ưu hóa độ đo F-max.
+\end{enumerate}
+
+
+% ==========================================
+% PHẦN II: CÔNG VIỆC LIÊN QUAN
+% ==========================================
+\section{Công việc liên quan}
+Lĩnh vực dự đoán chức năng protein (AFP) đã phát triển qua nhiều thập kỷ, chuyển dịch từ các phương pháp dựa trên sự tương đồng đơn giản sang các mô hình học máy phức tạp.
+
+\subsection{Các phương pháp dựa trên sự tương đồng chuỗi}
+Đây là cách tiếp cận kinh điển và vẫn là nền tảng quan trọng trong sinh học tính toán. Các công cụ tiêu biểu như BLAST (\textit{Basic Local Alignment Search Tool}) và Diamond hoạt động dựa trên nguyên lý: ``Các protein có trình tự axit amin tương tự nhau thường có nguồn gốc tiến hóa chung và đảm nhận chức năng tương tự nhau'' \cite{blast}.
+
+\begin{itemize}
+    \item \textbf{Ưu điểm:} Phương pháp này đạt độ chính xác rất cao đối với các protein có độ tương đồng lớn (\textit{high sequence identity}) với các protein đã biết trong cơ sở dữ liệu.
+    \item \textbf{Hạn chế:} Chúng thất bại khi gặp các protein thuộc ``vùng tối'' (\textit{twilight zone}) -- nơi độ tương đồng chuỗi thấp (dưới 30\%) -- hoặc khi dự đoán cho các loài sinh vật mới chưa được nghiên cứu kỹ lưỡng. Đây chính là động lực thúc đẩy sự ra đời của các phương pháp học máy.
+\end{itemize}
+
+\subsection{Các phương pháp Học sâu trong AFP}
+
+\subsubsection{Mô hình dựa trên chuỗi (Sequence-based Models)}
+Các nghiên cứu ban đầu như DeepGO hay DeepFunc đã áp dụng Mạng nơ-ron tích chập (CNN) để trích xuất các motif cục bộ từ chuỗi axit amin, hoặc Mạng nơ-ron hồi quy (RNN/LSTM) để nắm bắt sự phụ thuộc xa \cite{deepgo}.
+
+Tuy nhiên, bước ngoặt thực sự đến từ sự trỗi dậy của các Mô hình Ngôn ngữ Protein (\textit{Protein Language Models - pLMs}) dựa trên kiến trúc Transformer. Các mô hình như ProtBERT, T5, và đặc biệt là ESM (\textit{Evolutionary Scale Modeling}) được huấn luyện tự giám sát (\textit{self-supervised}) trên hàng tỷ chuỗi protein \cite{esm}. Chúng có khả năng học được các biểu diễn (\textit{embeddings}) chứa đựng thông tin sâu sắc về cấu trúc không gian và quy luật tiến hóa mà không cần nhãn chức năng. Trong nghiên cứu này, chúng tôi tận dụng ESM-2, một trong những pLMs tiên tiến nhất hiện nay, để thay thế các phương pháp mã hóa thủ công (như One-hot hay k-mer).
+
+\subsubsection{Mô hình dựa trên đồ thị (Graph-based Models)}
+Khác với bài toán phân loại ảnh hay văn bản thông thường, nhãn trong bài toán AFP có cấu trúc đồ thị. Các phương pháp như DeepGOPlus hay GCN-Fun sử dụng Mạng nơ-ron đồ thị (\textit{Graph Convolutional Networks - GCN}) để lan truyền thông tin giữa các thuật ngữ GO. Ý tưởng cốt lõi là tận dụng mối quan hệ ``cha-con'' trong Gene Ontology để ràng buộc và cải thiện độ chính xác của dự đoán.
+
+\subsubsection{Phương pháp ``Alignment'' và Kết hợp}
+Một hướng tiếp cận hiện đại, tương tự như ý tưởng trong nghiên cứu này, là coi bài toán AFP như một bài toán ``Dịch máy'' hoặc ``Gióng hàng đa phương thức'' (\textit{Multi-modal Alignment}). Các nghiên cứu gần đây (như CLIP trong xử lý ảnh-văn bản) đã truyền cảm hứng cho việc học một không gian vector chung (\textit{Joint Latent Space}), nơi vector của protein và vector của nhãn chức năng được kéo lại gần nhau nếu chúng tương ứng.
+
+\subsubsection{Dự đoán Zero-shot và Few-shot trong AFP}
+
+Một hạn chế quan trọng của các mô hình AFP truyền thống là sự phụ thuộc mạnh vào dữ liệu được gán nhãn đầy đủ cho từng loài sinh vật. Trong thực tế, phần lớn các protein mới được giải trình tự thuộc về các loài chưa được nghiên cứu kỹ, hoặc hoàn toàn không có dữ liệu chú giải thực nghiệm, dẫn đến bài toán dự đoán trong kịch bản \textit{zero-shot} hoặc \textit{few-shot}.
+
+Các nghiên cứu gần đây đã chỉ ra rằng các Mô hình Ngôn ngữ Protein (\textit{Protein Language Models}) được huấn luyện trên tập dữ liệu khổng lồ không giám sát có khả năng học được các biểu diễn mang tính phổ quát, cho phép chuyển giao tri thức giữa các họ protein và các nhánh tiến hóa khác nhau. Các mô hình như ESM, ProtT5 hay ProtBERT đã được chứng minh là có khả năng tổng quát hóa tốt sang các protein chưa từng xuất hiện trong tập huấn luyện.
+
+Bên cạnh đó, một số công trình tiếp cận bài toán AFP như một bài toán so khớp ngữ nghĩa (\textit{semantic matching}), trong đó embedding của protein được gióng hàng trực tiếp với embedding của các thuật ngữ GO sinh ra từ định nghĩa văn bản. Cách tiếp cận này cho phép mô hình dự đoán các chức năng hiếm gặp hoặc chưa từng được quan sát trong quá trình huấn luyện, miễn là các biểu diễn ngữ nghĩa của nhãn tồn tại. Điều này đặc biệt phù hợp với bối cảnh CAFA 6, nơi tập kiểm tra bao gồm nhiều loài sinh vật mới hoàn toàn.
+
+\subsubsection{Mô hình Nhận thức Phân loại học và Dịch chuyển Miền}
+
+Sự khác biệt về phân bố chức năng protein giữa các nhóm sinh vật (vi khuẩn, sinh vật nhân thực, virus, cổ khuẩn) đặt ra thách thức lớn cho các hệ thống AFP. Nhiều mô hình trước đây ngầm giả định rằng phân bố chức năng là đồng nhất giữa các loài, dẫn đến suy giảm hiệu năng khi áp dụng cho các miền sinh học mới.
+
+Các nghiên cứu gần đây nhấn mạnh vai trò của việc tích hợp thông tin phân loại học (\textit{taxonomic information}) vào mô hình dự đoán. Một số phương pháp điều kiện hóa đầu ra mô hình theo định danh loài hoặc nhánh tiến hóa, trong khi các hướng tiếp cận khác áp dụng chiến lược thích nghi miền (\textit{domain adaptation}) nhằm giảm thiểu tác động của dịch chuyển phân bố giữa tập huấn luyện và tập kiểm tra.
+
+Những mô hình nhận thức phân loại học này đã cho thấy khả năng cải thiện đáng kể độ ổn định và độ chính xác khi dự đoán chức năng cho các protein thuộc loài chưa từng xuất hiện trong dữ liệu huấn luyện, phù hợp với yêu cầu đánh giá khắt khe của CAFA 6.
+
+
+\subsection{Định vị nghiên cứu của chúng tôi}
+So với các công trình trước đây, phương pháp của chúng tôi tạo ra sự khác biệt thông qua việc tích hợp đa chiều:
+
+\begin{itemize}
+    \item Chúng tôi không chỉ dựa vào embeddings của protein mà còn tích hợp thông tin phân loại học (Taxonomy) trực tiếp vào đầu vào, giúp mô hình ``nhận thức'' được ngữ cảnh loài.
+    \item Thay vì sử dụng nhãn dạng One-hot vector thưa thớt, chúng tôi nhúng (\textit{embed}) các thuật ngữ GO bằng cách kết hợp cả định nghĩa văn bản (thông qua BERT-based models) và cấu trúc topo (thông qua Node2Vec).
+    \item Mô hình đề xuất sử dụng cơ chế Alignment để học mối tương quan trực tiếp giữa đặc trưng sinh học của protein và ngữ nghĩa của chức năng, thay vì chỉ học một lớp phân loại tuyến tính đơn giản.
+\end{itemize}
+
+
+% ==========================================
+% PHẦN III: PHƯƠNG PHÁP
+% ==========================================
+\section{Phân tích dữ liệu}
+Phần này trình bày chi tiết về bộ dữ liệu được sử dụng, quy trình tiền xử lý dữ liệu phức tạp, kiến trúc mô hình học sâu đề xuất và chiến lược huấn luyện để giải quyết bài toán dự đoán chức năng protein.
+
+\subsection{Mô tả Tập dữ liệu}
+Dữ liệu cho nghiên cứu này được cung cấp bởi Ban tổ chức cuộc thi CAFA-6 trên nền tảng Kaggle, có nguồn gốc từ cơ sở dữ liệu UniProtKB và Gene Ontology Consortium.
+
+\subsubsection{Các thành phần dữ liệu chính}
+\begin{itemize}
+    \item \texttt{train\_sequences.fasta}: Tập hợp ID và chuỗi axit amin của các protein trong tập huấn luyện.
+    \item \texttt{test\_sequences.fasta}: Tập hợp ID và chuỗi axit amin của các protein trong tập kiểm tra (dùng để sinh dự đoán nộp bài).
+    \item \texttt{train\_terms.tsv}: Chứa các nhãn thực địa (\textit{ground-truth}), ánh xạ mỗi ID protein trong tập huấn luyện tới các thuật ngữ GO tương ứng.
+    \item \texttt{train\_taxonomy.tsv}: Thông tin định danh loài (NCBI Taxonomy ID) cho từng protein, giúp mô hình nhận biết ngữ cảnh sinh học và giải quyết vấn đề thích nghi miền.
+    \item \texttt{go-basic.obo}: Tệp cấu trúc bản thể học (\textit{Ontology}), định nghĩa các thuật ngữ và mối quan hệ phân cấp (như \textit{is\_a}, \textit{part\_of}) dưới dạng Đồ thị có hướng không chu trình (DAG).
+\end{itemize}
+\subsubsection{Phân chia dữ liệu}
+Để đánh giá khách quan hiệu năng của mô hình trong quá trình phát triển, chúng tôi chia tập dữ liệu huấn luyện (\textit{Train set}) theo tỷ lệ 95:5. Cụ thể, 95\% dữ liệu được dùng để cập nhật trọng số mô hình và 5\% dữ liệu được tách riêng làm tập xác thực (\textit{Validation set}) để tinh chỉnh siêu tham số và theo dõi hiện tượng quá khớp (\textit{overfitting}).
+
+\begin{itemize}
+    % --- MỤC 1: ĐỘ DÀI CHUỖI ---
+    \item \textbf{Phân phối độ dài chuỗi:} Phần lớn các chuỗi protein có độ dài dưới 1000 axit amin, tuy nhiên tồn tại một số chuỗi cực dài ($> 30.000$). Điều này đặt ra yêu cầu về việc cắt ngắn (\textit{truncation}) để phù hợp với giới hạn bộ nhớ GPU.
+    
+    \begin{figure}[H] 
+        \centering
+        \includegraphics[width=\linewidth]{figures/sequence_length_distribution.png}
+        \caption{Biểu đồ phân phối độ dài chuỗi protein.}
+        \label{fig:seq_len}
+    \end{figure}
+
+    % --- MỤC 2: MẤT CÂN BẰNG NHÃN (2 ẢNH TRÊN - DƯỚI) ---
+    \item \textbf{Mất cân bằng nhãn (Label Imbalance):} Tần suất xuất hiện của các thuật ngữ GO tuân theo quy luật lũy thừa (\textit{Power Law}). Một số ít thuật ngữ xuất hiện ở hàng trăm nghìn protein, trong khi hàng nghìn thuật ngữ chỉ xuất hiện vài lần.
+    
+    \begin{figure}[H]
+        \centering
+        % Ảnh con 1 (Ở trên)
+        \begin{subfigure}[b]{0.9\linewidth} % Chiếm 90% chiều rộng cột
+            \includegraphics[width=\linewidth]{figures/go_term_frequency.png}
+            \caption{Tần suất GO Term}
+            \label{fig:go_freq}
+        \end{subfigure}
+        
+        \par\bigskip % Lệnh xuống dòng và tạo khoảng cách
+
+        % Ảnh con 2 (Ở dưới)
+        \begin{subfigure}[b]{0.9\linewidth} % Chiếm 90% chiều rộng cột
+            \includegraphics[width=\linewidth]{figures/label_imbalance.png}
+            \caption{Phân phối đuôi dài}
+            \label{fig:imbalance}
+        \end{subfigure}
+        
+        \caption{Minh họa sự mất cân bằng dữ liệu nghiêm trọng.}
+        \label{fig:combined_imbalance}
+    \end{figure}
+
+    % --- MỤC 3: PHÂN BỐ LOÀI ---
+    \item \textbf{Phân bố loài:} Dữ liệu bị lệch về phía các sinh vật nhân sơ (Bacteria) và nhân thực (Eukaryota), trong khi Virus và Cổ khuẩn (Archaea) chiếm tỷ lệ nhỏ.
+    
+    \begin{figure}[H]
+        \centering
+        \includegraphics[width=\linewidth]{figures/taxonomy_distribution.png}
+        \caption{Thống kê số lượng protein theo từng siêu giới.}
+        \label{fig:tax_dist}
+    \end{figure}
+\end{itemize}
+
+\section{Phương pháp đề xuất}
+\subsection{Tiền xử lý Dữ liệu}
+Quy trình tiền xử lý đóng vai trò then chốt trong việc chuyển đổi dữ liệu sinh học thô thành các vector số học mà máy tính có thể hiểu được.
+
+\subsubsection{Biểu diễn Đặc trưng Protein}
+Thay vì sử dụng One-hot encoding truyền thống, chúng tôi sử dụng mô hình ngôn ngữ lớn ESM-2 (phiên bản \texttt{esm2\_t36\_3B\_UR50D} với 3 tỷ tham số). Mỗi chuỗi protein được đưa qua mạng ESM-2 để trích xuất một vector nhúng (\textit{embedding}) có kích thước cố định $d_{esm} = 2560$. Vector này gói gọn thông tin về cấu trúc hóa học và lịch sử tiến hóa của protein.
+
+\subsubsection{Mã hóa thông tin loài}
+Để giải quyết vấn đề dịch chuyển miền (\textit{Domain Shift}), chúng tôi trích xuất thông tin Superkingdom (Archaea, Bacteria, Eukaryota, Viruses) và mã hóa thành vector 4 chiều $d_{tax} = 4$. Vector này được ghép nối (\textit{concatenate}) với vector protein để tạo thành đầu vào tổng hợp có tổng số chiều là $2564$:
+\begin{equation}
+    Input_{final} = [Embedding_{ESM} \oplus Vector_{Taxonomy}]
+\end{equation}
+
+\subsubsection{Biểu diễn ngữ nghĩa nhãn GO}
+Đây là điểm mới trong phương pháp của chúng tôi. Thay vì coi nhãn chỉ là các chỉ số (index), chúng tôi biểu diễn mỗi nhãn GO thành một vector đặc trưng phong phú kết hợp từ hai nguồn:
+\begin{itemize}
+    \item \textbf{Text Embedding:} Sử dụng mô hình PubMedBERT để mã hóa tên và định nghĩa văn bản của thuật ngữ GO.
+    \item \textbf{Graph Embedding:} Sử dụng thuật toán Node2Vec chạy trên đồ thị GO để tạo ra vector nắm bắt vị trí topo của nhãn trong cây phả hệ.
+\end{itemize}
+Kết quả là mỗi nhãn $j$ được đại diện bởi vector $L_j$.
+
+\subsection{Kiến trúc Mô hình Protein-GO Aligner}
+Chúng tôi đề xuất kiến trúc \textit{Protein-GO Aligner}, một mạng nơ-ron hai nhánh (Two-Tower architecture) tích hợp cơ chế \textit{Taxonomy-aware Soft Gating}. Mô hình ánh xạ các đặc trưng protein và nhãn GO vào một không gian ẩn chung (Joint Latent Space) $d_{joint} = 512$ để tính toán xác suất liên kết.
+
+\subsubsection{Bộ mã hóa Protein và Cơ chế Soft-Gating}
+Đầu vào của nhánh protein bao gồm vector nhúng trình tự $x_{seq} \in \mathbb{R}^{2560}$ (được trích xuất từ mô hình ngôn ngữ ESM-2) và vector phân loại học $x_{tax} \in \mathbb{R}^{4}$ (đại diện cho Bacteria, Eukaryota, Archaea, và Virus/Other).
+
+Để xử lý sự khác biệt về chức năng protein giữa các nhóm sinh vật, chúng tôi thiết kế một mạng \textit{Soft Router} để điều biến (modulate) đặc trưng protein. 
+
+Đầu tiên, đặc trưng trình tự $x_{seq}$ được chiếu sang không gian ẩn trung gian:
+\begin{equation}
+    h_{prot} = \text{GELU}(\text{BN}(\mathbf{W}_{p1} x_{seq} + b_{p1})) \in \mathbb{R}^{1024}
+\end{equation}
+Trong đó $\text{BN}$ là lớp Batch Normalization và $\text{GELU}$ là hàm kích hoạt Gaussian Error Linear Unit.
+
+Song song đó, vector $x_{tax}$ được đưa qua mạng Router để tạo ra cổng lọc $g$:
+\begin{equation}
+    g = \sigma(\mathbf{W}_{t2} \cdot \text{ReLU}(\text{BN}(\mathbf{W}_{t1} x_{tax}))) \in (0, 1)^{1024}
+\end{equation}
+Trong đó $\sigma(\cdot)$ là hàm Sigmoid, đảm bảo giá trị cổng nằm trong khoảng $(0,1)$.
+
+Đặc trưng protein cuối cùng $v_{prot}$ thu được thông qua phép nhân từng phần tử (Hadamard product) giữa đặc trưng gốc và cổng $g$, sau đó chiếu về không gian chung:
+\begin{equation}
+    h_{routed} = h_{prot} \odot g
+\end{equation}
+\begin{equation}
+    v_{prot} = \frac{\mathbf{W}_{p2} h_{routed}}{||\mathbf{W}_{p2} h_{routed}||_2} \in \mathbb{R}^{512}
+\end{equation}
+Cơ chế này cho phép mô hình triệt tiêu các đặc trưng nhiễu và khuếch đại các đặc trưng đặc thù cho từng nhóm loài.
+
+\subsubsection{Bộ mã hóa Nhãn GO (Label Encoder)}
+Đầu vào cho mỗi nhãn GO là vector $z_{go} \in \mathbb{R}^{d_{go}}$, là sự kết hợp giữa đặc trưng ngữ nghĩa (từ PubMedBERT, 768 chiều) và đặc trưng cấu trúc đồ thị (từ Node2Vec, 64 chiều). Vector này được mã hóa qua một mạng MLP hai lớp với chuẩn hóa LayerNorm (LN):
+\begin{equation}
+    h_{go} = \text{GELU}(\text{LN}(\mathbf{W}_{g1} z_{go}))
+\end{equation}
+\begin{equation}
+    v_{go} = \frac{\mathbf{W}_{g2} h_{go}}{||\mathbf{W}_{g2} h_{go}||_2} \in \mathbb{R}^{512}
+\end{equation}
+
+\subsubsection{Dự đoán Tương đồng}
+Điểm số (logits) $s_{ij}$ cho cặp protein $i$ và nhãn GO $j$ được tính toán dựa trên độ tương đồng Cosine có trọng số tỷ lệ (learnable scale) và bias riêng biệt:
+\begin{equation}
+    s_{ij} = \alpha \cdot (v_{prot}^{(i)} \cdot v_{go}^{(j)T}) + \beta_j
+\end{equation}
+Trong đó:
+\begin{itemize}
+    \item $\alpha$ là tham số nhiệt độ có thể học được (learnable logit scale), được khởi tạo giá trị $\ln(14)$ và kẹp (clamp) giá trị tối đa là 100.
+    \item $\beta_j$ là bias học được cho nhãn GO thứ $j$, giúp mô hình nắm bắt xác suất tiên nghiệm (prior probability) của từng nhãn chức năng.
+\end{itemize}
+
+Xác suất dự đoán cuối cùng: $\hat{y}_{ij} = \sigma(s_{ij})$.
+
+\subsection{Hàm Mất mát (Loss Function)}
+Do sự mất cân bằng dữ liệu nghiêm trọng (số lượng nhãn dương $y=1$ rất nhỏ so với nhãn âm $y=0$), chúng tôi sử dụng hàm \textbf{Weighted Binary Cross-Entropy}. Chúng tôi áp dụng trọng số dương $w_{pos}$ để tăng mức phạt khi mô hình bỏ sót các chức năng thực tế.
+
+Công thức hàm mất mát cho một mẫu protein $i$ trên tập nhãn $C$:
+\begin{equation}
+    \mathcal{L}_i = - \frac{1}{|C|} \sum_{j=1}^{|C|} \left[ w_{pos} \cdot y_{ij} \cdot \log(\sigma(s_{ij})) + (1 - y_{ij}) \cdot \log(1 - \sigma(s_{ij})) \right]
+\end{equation}
+Trong thực nghiệm, chúng tôi thiết lập $w_{pos} = 15.0$. Giá trị này khuyến khích mô hình tăng độ nhạy (Recall), giảm thiểu lỗi False Negative thường gặp trong bài toán gán nhãn đa chức năng.
+
+\subsection{Chi tiết Huấn luyện}
+Mô hình được cài đặt bằng thư viện PyTorch và huấn luyện trên GPU NVIDIA GeForce RTX 3060 với cấu hình siêu tham số như sau:
+\begin{itemize}
+    \item \textbf{Tối ưu hóa (Optimizer):} AdamW với trọng số suy giảm (weight decay) $\lambda = 1e-4$.
+    \item \textbf{Lịch trình tốc độ học (LR Scheduler):} OneCycleLR với tốc độ học tối đa $lr_{max} = 3e-4$, tỷ lệ khởi động (warm-up) 10\% tổng số bước.
+    \item \textbf{Batch Size:} 1024 mẫu protein.
+    \item \textbf{Số Epoch:} 50 epoch, áp dụng cơ chế \textit{Early Stopping} với độ kiên nhẫn (patience) là 8 epoch dựa trên chỉ số F1-score của tập validation.
+    \item \textbf{Cross-Validation:} Sử dụng chiến lược 5-Fold Stratified để đánh giá độ ổn định của mô hình.
+\end{itemize}
+
+
+
+
+
+% ==========================================
+% PHẦN IV: MÃ NGUỒN CHI TIẾT (ALGORITHMS)
+% ==========================================
+\section{Mã nguồn chi tiết}
+
+% Đổi tên "Algorithm" thành "Giải thuật" cho tiếng Việt
+\floatname{algorithm}{Giải thuật}
+% Reset bộ đếm về 0 để bắt đầu đánh số từ 1, 2, 3 cho phần này
+\setcounter{algorithm}{0}
+
+
+\subsection{ Mã nguồn Tiền xử lý (Data Preprocessing)}
+Phần này trình bày quy trình chuyển đổi dữ liệu thô thành các vector đặc trưng. Quy trình được chia thành ba giai đoạn chính: xử lý không gian nhãn, mã hóa protein và nhúng ngữ nghĩa cho nhãn.
+
+\begin{algorithm}[H]
+\caption{Xử lý Nhãn GO và Lan truyền Tổ tiên}
+\begin{algorithmic}[1]
+\REQUIRE \textit{Input:} Raw Annotations ($A_{raw}$), OBO Ontology Graph ($G$), Config $K=10000$
+\ENSURE \textit{Output:} Filtered Label Map, Vocabulary $V$
+
+\STATE \textbf{Step 1: Load \& Prune Graph}
+\STATE $G_{prop} \leftarrow LoadOBO(G)$
+\STATE Keep only edges with type \texttt{"is\_a"}
+
+\STATE \textbf{Step 2: Ancestor Propagation (True Path Rule)}
+\STATE $Cache \leftarrow \{\}$
+\FOR{term $t$ \textbf{in} $G_{prop}$}
+    \STATE $Cache[t] \leftarrow Descendants(G_{prop}, t) \cup \{t\}$
+\ENDFOR
+
+\STATE $TermCounts \leftarrow Counter()$
+\FOR{protein $p$, terms $T_p$ \textbf{in} $A_{raw}$}
+    \STATE $T_{new} \leftarrow \bigcup_{t \in T_p} Cache[t]$
+    \STATE $Map[p] \leftarrow T_{new}$
+    \STATE $TermCounts.update(T_{new})$
+\ENDFOR
+
+\STATE \textbf{Step 3: Feature Selection}
+\STATE $V \leftarrow TermCounts.most\_common(K)$
+\STATE $IndexMap \leftarrow \{term: i \textbf{ for } i, term \textbf{ in } Enumerate(V)\}$
+\end{algorithmic}
+\label{alg:label_prop}
+\end{algorithm}
+
+\begin{algorithm}[H]
+\caption{Mã hóa Protein và Thông tin Loài}
+\begin{algorithmic}[1]
+\REQUIRE \textit{Input:} Sequences $S$, TaxIDs $T$, ESM-2 Model
+\ENSURE \textit{Output:} Feature Matrix $X \in \mathbb{R}^{N \times 2564}$
+
+\STATE \textbf{Step 1: Sequence Embedding (Batch Processing)}
+\FOR{batch $B$ \textbf{in} $S$}
+    \STATE $E_{seq} \leftarrow ESM2\_Model(B)$ 
+    \STATE Cache $E_{seq}$ to disk (Parquet)
+\ENDFOR
+
+\STATE \textbf{Step 2: Taxonomy Mapping (via NCBITaxa)}
+\STATE $Groups \leftarrow \{Bacteria:0, Eukaryota:1, Archaea:2, Virus:3\}$
+\FOR{tax\_id $t$ \textbf{in} Unique($T$)}
+    \STATE $Lineage \leftarrow GetLineage(t)$
+    \STATE $Vec_{tax} \leftarrow [0, 0, 0, 0]$
+    \IF{$\exists ancestor \in Lineage$ matches $Groups$}
+        \STATE $idx \leftarrow Groups[ancestor]$
+        \STATE $Vec_{tax}[idx] \leftarrow 1$
+    \ELSE
+        \STATE $Vec_{tax}[3] \leftarrow 1$ 
+    \ENDIF
+    \STATE $Map_{tax}[t] \leftarrow Vec_{tax}$
+\ENDFOR
+
+\STATE \textbf{Step 3: Feature Fusion}
+\FOR{protein $p$ \textbf{in} Dataset}
+    \STATE $x_p \leftarrow Concat(E_{seq}[p], Map_{tax}[T[p]])$
+    \STATE Append $x_p$ to $X$
+\ENDFOR
+\end{algorithmic}
+\label{alg:prot_encoding}
+\end{algorithm}
+
+\begin{algorithm}[H]
+\caption{Nhúng Ngữ nghĩa Nhãn GO Đa phương thức}
+\begin{algorithmic}[1]
+\REQUIRE \textit{Input:} Vocabulary $V$, GO Graph $G$
+\ENSURE \textit{Output:} Label Embeddings $L_{final}$
+
+\STATE \textbf{Method 1: Textual Embedding (GPU)}
+\STATE $Docs \leftarrow []$
+\FOR{term $t$ \textbf{in} $V$}
+    \STATE $Name \leftarrow G.nodes[t].name$
+    \STATE $Def \leftarrow G.nodes[t].def$
+    \STATE $Docs.append(Name + ": " + Def)$
+\ENDFOR
+\STATE $E_{text} \leftarrow PubMedBERT(Docs)$ 
+
+\STATE \textbf{Method 2: Structural Embedding (CPU)}
+\STATE \textbf{Config:} $Dim=64, WalkLen=30, Walks=100$
+\STATE $E_{graph} \leftarrow Node2Vec(G, workers=CPU\_COUNT)$
+
+\STATE \textbf{Step 3: Combine Results}
+\STATE $L_{final} \leftarrow DataFrame(V)$
+\STATE $L_{final}['text'] \leftarrow E_{text}$
+\STATE $L_{final}['graph'] \leftarrow Map(E_{graph}, V)$
+\STATE Save to \texttt{label.parquet}
+\end{algorithmic}
+\label{alg:label_emb}
+\end{algorithm}
+
+\subsection{ Mã nguồn Huấn luyện và Kiểm thử}
+Phần này mô tả chi tiết quy trình huấn luyện mô hình theo chiến lược kiểm chứng chéo (Cross-Validation) và quy trình dự đoán kết hợp (Ensemble Inference) để tạo ra kết quả cuối cùng.
+
+% --- ALGORITHM 4: DATASET & LOADER ---
+\begin{algorithm}[H]
+\caption{Chuẩn bị Dữ liệu và DataLoader}
+\begin{algorithmic}[1]
+\REQUIRE \textit{Input:} DataFrame $D_{train}$, Batch Size $B$
+\ENSURE \textit{Output:} DataLoader $L_{train}, L_{val}$
+
+\STATE \textbf{Class ProteinGODataset:}
+\STATE \quad $X_{emb} \leftarrow D_{train}['embedding']$
+\STATE \quad $X_{tax} \leftarrow D_{train}['superkingdom']$
+\STATE \quad $X \leftarrow Concat(X_{emb}, X_{tax})$ \COMMENT{Dim: 2564}
+\STATE \quad Convert $X$ to Shared Memory Tensor (Optimization)
+\STATE \quad $Y \leftarrow D_{train}['labels']$
+
+\STATE \textbf{Function GetItem(idx):}
+\STATE \quad $x \leftarrow X[idx]$
+\STATE \quad $y \leftarrow Zeros(NumClasses)$
+\STATE \quad $y[Y[idx]] \leftarrow 1.0$ \COMMENT{Multi-hot Encoding}
+\STATE \quad \textbf{Return} $x, y$
+\end{algorithmic}
+\label{alg:dataset}
+\end{algorithm}
+
+% --- ALGORITHM 5: TRAINING LOOP ---
+\begin{algorithm}[H]
+\caption{Quy trình Huấn luyện K-Fold Cross-Validation}
+\begin{algorithmic}[1]
+\REQUIRE Dataset $D$, Label Embeddings $E_{GO}$, Configs ($K=8, lr=3e^{-4}$)
+\ENSURE $K$ Trained Models
+
+\STATE $KFold \leftarrow Split(D, n\_splits=K)$
+\FOR{$fold, (Idx_{train}, Idx_{val})$ \textbf{in} $KFold$}
+    \STATE $M \leftarrow InitializeModel()$
+    \STATE $Opt \leftarrow AdamW(M.params, lr, weight\_decay=1e^{-4})$
+    \STATE $Sched \leftarrow OneCycleLR(Opt)$
+    \STATE $LossFn \leftarrow BCEWithLogitsLoss()$
+    
+    \FOR{$epoch \leftarrow 1$ \textbf{to} $MAX\_EPOCHS$}
+        \STATE \textbf{-- Training Phase --}
+        \FOR{$(x, y)$ \textbf{in} $Loader(Idx_{train})$}
+            \STATE $logits \leftarrow M(x, E_{GO})$
+            \STATE $loss \leftarrow LossFn(logits, y)$
+            \STATE $loss.backward()$
+            \STATE $Opt.step(); Sched.step()$
+        \ENDFOR
+        
+        \STATE \textbf{-- Validation Phase --}
+        \STATE $F1 \leftarrow Evaluate(M, Loader(Idx_{val}))$
+        \IF{$F1 > BestF1$}
+            \STATE SaveModel($M$, fold)
+        \ENDIF
+        \IF{EarlyStopping(F1)} \textbf{Break} \ENDIF
+    \ENDFOR
+\ENDFOR
+\end{algorithmic}
+\label{alg:training_cv}
+\end{algorithm}
+
+% --- ALGORITHM 6: INFERENCE ---
+\begin{algorithm}[H]
+\caption{Dự đoán Ensemble và Lan truyền Nhãn}
+\begin{algorithmic}[1]
+\REQUIRE Test Data $D_{test}$, Models $M_{1..K}$, Diamond Results $S_{blast}$, $\alpha=0.5$
+\ENSURE Final Predictions $P_{final}$
+
+\STATE \textbf{Step 1: Deep Learning Ensemble}
+\STATE $P_{dl} \leftarrow Zeros(|D_{test}|, |Vocab|)$
+\FOR{model $m$ \textbf{in} $M_{1..K}$}
+    \STATE $logits \leftarrow m(D_{test})$
+    \STATE $P_{dl} \leftarrow P_{dl} + Sigmoid(logits)$
+\ENDFOR
+\STATE $P_{dl} \leftarrow P_{dl} / K$ \COMMENT{Average Voting}
+
+\STATE \textbf{Step 2: Hybrid Ensemble (Diamond)}
+\STATE $P_{final} \leftarrow \alpha \cdot P_{dl} + (1 - \alpha) \cdot S_{blast}$
+
+\STATE \textbf{Step 3: Ontology Propagation}
+\STATE $Order \leftarrow TopologicalSort(GO\_Graph)$
+\FOR{child \textbf{in} $Order$}
+    \FOR{parent \textbf{in} Parents(child)}
+        \STATE $P_{final}[parent] \leftarrow Max(P_{final}[parent], P_{final}[child])$
+    \ENDFOR
+\ENDFOR
+
+\STATE \textbf{Step 4: Top-K Selection}
+\STATE Select Top 100 terms with score $> 0.001$ for each protein.
+\STATE Write to \texttt{submission.tsv}
+\end{algorithmic}
+\label{alg:inference}
+\end{algorithm}
+
+% ==========================================
+% TÀI LIỆU THAM KHẢO
+% ==========================================
+\begin{thebibliography}{00}
+
+\bibitem{uniprot} The UniProt Consortium, ``UniProt: the universal protein knowledgebase in 2021,'' \textit{Nucleic Acids Research}, vol. 49, no. D1, pp. D480--D489, 2021.
+
+\bibitem{blast} S. F. Altschul et al., ``Basic local alignment search tool,'' \textit{Journal of Molecular Biology}, vol. 215, no. 3, pp. 403--410, 1990.
+
+\bibitem{deepgo} M. Kulmanov and R. Hoehndorf, ``DeepGO: predicting protein functions from sequence and interactions using a deep ontology-aware classifier,'' \textit{Bioinformatics}, vol. 34, no. 4, pp. 660--668, 2018.
+
+\bibitem{esm} Z. Lin et al., ``Evolutionary-scale prediction of atomic-level protein structure with a language model,'' \textit{Science}, vol. 379, no. 6637, pp. 1123--1130, 2023.
+
+\bibitem{cafa} N. Radivojac et al., ``A large-scale evaluation of computational protein function prediction,'' \textit{Nature Methods}, vol. 10, no. 3, pp. 221--227, 2013.
+
+\end{thebibliography}
+
+\end{document}
+
+
